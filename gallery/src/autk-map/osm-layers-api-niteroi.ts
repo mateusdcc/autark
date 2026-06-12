@@ -43,7 +43,11 @@ export class OsmLayersApi {
     protected async loadLayers(): Promise<void> {
         for (const layerData of this.db.getLayersMetadata()) {
             const geojson = await this.db.getLayer(layerData.name);
-            this.map.loadCollection(layerData.name, { collection: geojson, type: layerData.type, allowZeroHeightBuildings: true });
+            this.map.loadCollection(layerData.name, {
+                collection: geojson,
+                type: layerData.type,
+                loadConfig: { buildingsZeroHeight: true },
+            });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
     }

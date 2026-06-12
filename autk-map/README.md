@@ -41,6 +41,7 @@ await map.init();
 map.loadCollection('buildings', {
   collection: buildingsGeojson,
   type: 'buildings',
+  loadConfig: { buildingsZeroHeight: true },
   property: 'properties.height',
 });
 

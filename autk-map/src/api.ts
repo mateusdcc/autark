@@ -39,6 +39,20 @@ import type {
  * mapping immediately after the layer is created. For raster layers, `property`
  * is required so a numeric value can be extracted from each raster cell.
  */
+export interface LoadCollectionConfig {
+    /**
+     * Optional flag to preserve buildings that lack valid height metadata.
+     */
+    buildingsZeroHeight?: boolean;
+    /**
+     * Optional full visual width for triangulated polyline/road layers.
+     *
+     * The renderer stores polylines as buffered meshes, so this value is applied
+     * while loading the collection rather than as a later render-state update.
+     */
+    polylinesWidth?: number;
+}
+
 export interface LoadCollectionParams {
     /**
      * Source feature collection to load.
@@ -55,18 +69,10 @@ export interface LoadCollectionParams {
      * should not be derived automatically.
      */
     type?: LayerType | null;
-
     /**
-     * Optional flag to treat building zero-height extrusions.
+     * Optional geometry-building configuration applied while loading.
      */
-    allowZeroHeightBuildings?: boolean;
-    /**
-     * Optional full visual width for triangulated polyline/road layers.
-     *
-     * The renderer stores polylines as buffered meshes, so this value is applied
-     * while loading the collection rather than as a later render-state update.
-     */
-    lineWidth?: number;
+    loadConfig?: LoadCollectionConfig;
     /**
      * Property accessor used to derive layer values.
      *

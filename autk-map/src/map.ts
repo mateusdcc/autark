@@ -216,11 +216,11 @@ export class AutkMap {
      * @param params Load parameters.
      * @param params.collection Source GeoJSON feature collection.
      * @param params.type Optional layer type override.
+     * @param params.loadConfig Optional geometry-building configuration applied while loading.
      * @param params.property Optional value extractor applied immediately as the initial thematic mapping.
-     * @param params.allowZeroHeightBuildings Optional flag to treat building zero-height extrusions.
      * @throws Never throws. Errors are logged to the console.
      */
-    loadCollection(id: string, { collection, type = null, property, allowZeroHeightBuildings = false, lineWidth }: LoadCollectionParams): void {
+    loadCollection(id: string, { collection, type = null, property, loadConfig }: LoadCollectionParams): void {
         if (!this.layerManager.hasOrigin) {
             this.layerManager.initializeOrigin(collection);
         }
@@ -238,7 +238,13 @@ export class AutkMap {
 
             case 'roads':
             case 'polylines': {
-                this.createPolylinesLayer(id, collection as FeatureCollection, sType, typeof property === 'string' ? property : undefined, lineWidth);
+                this.createPolylinesLayer(
+                    id,
+                    collection as FeatureCollection,
+                    sType,
+                    typeof property === 'string' ? property : undefined,
+                    loadConfig?.polylinesWidth,
+                );
                 break;
             }
             case 'points':
@@ -246,7 +252,13 @@ export class AutkMap {
                 break;
 
             case 'buildings':
-                this.createBuildingsLayer(id, collection as FeatureCollection, sType, typeof property === 'string' ? property : undefined, allowZeroHeightBuildings);
+                this.createBuildingsLayer(
+                    id,
+                    collection as FeatureCollection,
+                    sType,
+                    typeof property === 'string' ? property : undefined,
+                    loadConfig?.buildingsZeroHeight,
+                );
                 break;
 
             case 'raster':
@@ -989,7 +1001,7 @@ export class AutkMap {
      * @param property Optional value extractor used to initialize thematic data.
      * @returns Nothing. The layer is created when triangulation succeeds.
       */
-    private createPolylinesLayer(layerName: string, geojson: FeatureCollection, typeLayer: LayerType, property?: string, lineWidth?: number) {
+    private createPolylinesLayer(layerName: string, geojson: FeatureCollection, typeLayer: LayerType, property?: string, polylinesWidth?: number) {
         const layerInfo: LayerInfo = {
             id: `${layerName}`,
             zIndex: this._layerManager.computeZindex(typeLayer),
@@ -1004,8 +1016,8 @@ export class AutkMap {
             isSkip: false,
         };
 
-        const fixedHalfWidth = typeof lineWidth === 'number' && Number.isFinite(lineWidth) && lineWidth > 0
-            ? lineWidth / 2
+        const fixedHalfWidth = typeof polylinesWidth === 'number' && Number.isFinite(polylinesWidth) && polylinesWidth > 0
+            ? polylinesWidth / 2
             : undefined;
 
         TriangulatorPolylines.offset = fixedHalfWidth ?? (typeLayer === 'roads' ? TriangulatorPolylines.DEFAULT_ROAD_HALF_WIDTH : 8.5);
@@ -1099,7 +1111,7 @@ export class AutkMap {
      * @param property Optional value extractor used to initialize thematic data.
      * @returns Nothing. The layer is created when triangulation succeeds.
       */
-    private createBuildingsLayer(layerName: string, geojson: FeatureCollection, typeLayer: LayerType, property?: string, allowZeroHeightBuildings?: boolean) {
+    private createBuildingsLayer(layerName: string, geojson: FeatureCollection, typeLayer: LayerType, property?: string, buildingsZeroHeight?: boolean) {
         const layerInfo: LayerInfo = {
             id: `${layerName}`,
             zIndex: this._layerManager.computeZindex(typeLayer),
@@ -1114,7 +1126,7 @@ export class AutkMap {
             isSkip: false,
         };
 
-        const layerMesh = TriangulatorBuildings.buildMesh(geojson, this.layerManager.origin, allowZeroHeightBuildings);
+        const layerMesh = TriangulatorBuildings.buildMesh(geojson, this.layerManager.origin, buildingsZeroHeight);
         if (layerMesh[0].length === 0 || layerMesh[1].length === 0) {
             console.error('Invalid Building Layer.');
             return;

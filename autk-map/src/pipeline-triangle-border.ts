@@ -21,6 +21,8 @@ import type { ColorRGB } from '@urban-toolkit/autk-core';
 
 import { Triangles2DLayer } from './layer-triangles2D';
 
+const DEFAULT_BORDER_COLOR: ColorRGB = { r: 0, g: 0, b: 0 };
+
 /**
  * Rendering pipeline for drawing 2D triangle borders as indexed lines.
  *
@@ -76,7 +78,7 @@ export class PipelineTriangleBorder extends Pipeline {
      * @returns RGB color consumed by the border shader uniform.
      */
     protected override resolveLayerColor(layer: Triangles2DLayer): ColorRGB {
-        return layer.layerRenderInfo.strokeColor ?? super.resolveLayerColor(layer);
+        return layer.layerRenderInfo.strokeColor ?? DEFAULT_BORDER_COLOR;
     }
 
     /**
