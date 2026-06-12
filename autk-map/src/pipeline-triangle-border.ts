@@ -21,7 +21,7 @@ import type { ColorRGB } from '@urban-toolkit/autk-core';
 
 import { Triangles2DLayer } from './layer-triangles2D';
 
-const DEFAULT_BORDER_COLOR: ColorRGB = { r: 0, g: 0, b: 0 };
+const DEFAULT_BORDER_COLOR: ColorRGB = { r: 0, g: 0, b: 0, alpha: 1 };
 
 /**
  * Rendering pipeline for drawing 2D triangle borders as indexed lines.
