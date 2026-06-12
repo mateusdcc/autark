@@ -5,6 +5,7 @@ import dts from 'vite-plugin-dts';
 const isWatch = process.argv.includes('--watch');
 
 const externalPackages = [
+  '@urban-toolkit/autk-core',
   '@urban-toolkit/autk-map',
   '@urban-toolkit/autk-db',
   '@urban-toolkit/autk-compute',
@@ -17,6 +18,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
+        core: resolve(__dirname, 'src/core.ts'),
         map: resolve(__dirname, 'src/map.ts'),
         db: resolve(__dirname, 'src/db.ts'),
         compute: resolve(__dirname, 'src/compute.ts'),

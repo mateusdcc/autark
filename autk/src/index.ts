@@ -1,3 +1,4 @@
+export * as core from '@urban-toolkit/autk-core';
 export * as map from '@urban-toolkit/autk-map';
 export * as db from '@urban-toolkit/autk-db';
 export * as compute from '@urban-toolkit/autk-compute';

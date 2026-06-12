@@ -19,6 +19,7 @@
 
 The toolkit is available as a complete package `@urban-toolkit/autk` or as individual modules:
 
+* `@urban-toolkit/autk-core`: Shared low-level core package.
 * `@urban-toolkit/autk-db`: In-browser spatial database for urban datasets.
 * `@urban-toolkit/autk-compute`: WebGPU computation engine for analytical and render-based pipelines.
 * `@urban-toolkit/autk-map`: WebGPU-based 2D/3D vector map visualization library.
@@ -39,7 +40,7 @@ npm install @urban-toolkit/autk
 Use namespace imports when you want access to the full package surface:
 
 ```ts
-import { db, map, compute, plot } from '@urban-toolkit/autk';
+import { core, db, map, compute, plot } from '@urban-toolkit/autk';
 
 const spatialDb = new db.AutkDb();
 await spatialDb.init();
@@ -49,6 +50,7 @@ const autkMap = new map.AutkMap(canvas);
 await autkMap.init();
 
 const engine = new compute.AutkComputeEngine();
+const camera = new core.Camera();
 
 const container = document.querySelector<HTMLElement>('#plot')!;
 const scatterplot = new plot.AutkPlot(container, {
@@ -58,9 +60,12 @@ const scatterplot = new plot.AutkPlot(container, {
 });
 ```
 
+This umbrella package now also exposes the shared low-level core package explicitly.
+
 You can also import a specific module through a subpath:
 
 ```ts
+import { Camera } from '@urban-toolkit/autk/core';
 import { AutkDb } from '@urban-toolkit/autk/db';
 import { AutkMap } from '@urban-toolkit/autk/map';
 import { AutkComputeEngine } from '@urban-toolkit/autk/compute';

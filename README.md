@@ -17,7 +17,8 @@ Autark provides a client-side platform for implementing urban visual analytics s
 
 Autark is available as a single package or as individual modules:
 
-* `@urban-toolkit/autk`: Complete package that re-exports the toolkit modules.
+* `@urban-toolkit/autk`: Complete package that re-exports the toolkit modules, including `@urban-toolkit/autk-core`.
+* `@urban-toolkit/autk-core`: Shared low-level core package.
 * `@urban-toolkit/autk-db`: A spatial database that handles physical and thematic urban datasets.
 * `@urban-toolkit/autk-compute`: A WebGPU-based computation engine for implementing general-purpose algorithms using physical and thematic data.
 * `@urban-toolkit/autk-map`: A WebGPU-based vector map visualization library for exploring 2D and 3D physical and thematic layers.
@@ -36,6 +37,7 @@ npm install @urban-toolkit/autk
 Or install individual modules when you only need part of the toolkit:
 
 ```bash
+npm install @urban-toolkit/autk-core
 npm install @urban-toolkit/autk-db
 npm install @urban-toolkit/autk-compute
 npm install @urban-toolkit/autk-plot
