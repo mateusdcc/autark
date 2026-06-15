@@ -281,7 +281,7 @@ export class PipelineTrianglePicking extends Pipeline {
 
         // Depth test
         const depthStencil: GPUDepthStencilState = {
-            depthWriteEnabled: false,
+            depthWriteEnabled: true,
             depthCompare: 'greater-equal',
             format: 'depth32float',
         };
