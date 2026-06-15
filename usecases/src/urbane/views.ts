@@ -2,7 +2,6 @@ import { FeatureCollection } from 'geojson';
 
 import { AutkPlot, PlotEvent } from '@urban-toolkit/autk-plot';
 import { AutkMap, MapEvent } from '@urban-toolkit/autk-map';
-import type { MapEventData } from '@urban-toolkit/autk-map';
 import { ColorMapDomainStrategy } from '@urban-toolkit/autk-core';
 
 import { ROAD_SKY_VIEW_FIELD, SCORE_FIELD, SKY_EXPOSURE_FIELD } from './analysis';
@@ -122,7 +121,7 @@ export class UrbaneViews {
         getCurrentLevel: () => UrbaneLevel,
         onSelection: (selection: number[]) => void,
     ): void {
-        this.map.events.on(MapEvent.PICKING, ({ selection, layerId }: MapEventData) => {
+        this.map.events.on(MapEvent.PICKING, ({ selection, layerId }: { selection: number[]; layerId: string }) => {
             if (layerId !== getCurrentLevel()) return;
             this.table?.setSelection(selection);
             this.parallel?.setSelection(selection);

@@ -1,6 +1,5 @@
 import type { FeatureCollection, Feature, Geometry, GeoJsonProperties } from 'geojson';
 import { AutkMap, MapStyle, MapEvent } from '@urban-toolkit/autk-map';
-import type { MapEventData } from '@urban-toolkit/autk-map';
 import { ColorMapInterpolator, ColorMapDomainStrategy } from '@urban-toolkit/autk-core';
 import { AutkDb } from '@urban-toolkit/autk-db';
 import { ComputeGpgpu } from '@urban-toolkit/autk-compute';
@@ -249,7 +248,7 @@ export class OsmLayersApi {
     }
 
     protected setupPickListener(): void {
-        this.map.events.on(MapEvent.PICKING, ({ selection, layerId }: MapEventData) => {
+        this.map.events.on(MapEvent.PICKING, ({ selection, layerId }: { selection: number[]; layerId: string }) => {
             if (layerId !== 'table_osm_roads') return;
 
             this.plot.setSelection(selection);
