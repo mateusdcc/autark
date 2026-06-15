@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Autark (Examples)</title>
+    <link rel="stylesheet" href="/src/autk-map/building-picking.css">
+</head>
+
+<body>
+    <div id="app">
+        <h2>building-picking.ts</h2>
+        <button id="plotToggle" title="Toggle info panel">Info</button>
+        <canvas> </canvas>
+        <div id="plot">
+            <div id="plotBar"></div>
+            <div id="plotBody">
+                <h3 id="info-title">Click a building</h3>
+                <div class="info-row"><span>OSM id</span><strong id="info-osm-id">—</strong></div>
+                <div class="info-row"><span>Type</span><strong id="info-type">—</strong></div>
+                <div class="info-row"><span>Height</span><strong id="info-height">—</strong></div>
+                <div class="info-row"><span>Floors</span><strong id="info-levels">—</strong></div>
+                <div class="info-row"><span>Address</span><strong id="info-address">—</strong></div>
+            </div>
+        </div>
+    </div>
+</body>
+<script type="module" src="/src/autk-map/building-picking.ts"></script>
+<script>
+    function floatingPlot() {
+        let startX = 0, startY = 0, dragging = false;
+        const plot = document.querySelector('#plot');
+        const bar = document.querySelector('#plotBar');
+        const toggle = document.querySelector('#plotToggle');
+        if (!plot || !bar || !toggle) return;
+
+        plot.style.visibility = 'visible';
+        toggle.addEventListener('click', () => plot.classList.toggle('hidden-plot'));
+
+        bar.addEventListener('pointerdown', e => {
+            e.preventDefault(); e.stopPropagation();
+            dragging = true; startX = e.clientX; startY = e.clientY;
+            bar.setPointerCapture(e.pointerId);
+        });
+        bar.addEventListener('pointermove', e => {
+            if (!dragging) return;
+            plot.style.top = `${plot.offsetTop + (e.clientY - startY)}px`;
+            plot.style.left = `${plot.offsetLeft + (e.clientX - startX)}px`;
+            startX = e.clientX; startY = e.clientY;
+            e.preventDefault(); e.stopPropagation();
+        });
+        bar.addEventListener('pointerup', e => {
+            dragging = false;
+            if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId);
+        });
+        bar.addEventListener('pointercancel', e => {
+            dragging = false;
+            if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId);
+        });
+    }
+    floatingPlot();
+</script>
+
+</html>
