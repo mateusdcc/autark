@@ -63,7 +63,7 @@ dev:
 		"cd autk-plot && npm run dev-build" \
 		"cd autk-compute && npm run dev-build" \
 		"cd autk && npm run dev-build" \
-		"cd $(APP) && VITE_OPEN=\"$(OPEN)\" npm run dev"
+		"cd $(APP) && npm run dev$(if $(OPEN), -- --open=$(OPEN))"
 
 clean:
 	$(RIMRAF) node_modules
