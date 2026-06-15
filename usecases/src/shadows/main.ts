@@ -7,6 +7,7 @@ import { FeatureCollection } from 'geojson';
 import { AutkDb } from '@urban-toolkit/autk-db';
 import { ComputeGpgpu } from '@urban-toolkit/autk-compute';
 import { AutkMap, MapEvent } from '@urban-toolkit/autk-map';
+import type { MapEventData } from '@urban-toolkit/autk-map';
 import { AutkPlot, PlotEvent } from '@urban-toolkit/autk-plot';
 
 import splitRoadsQuery from './split-roads.sql?raw';
@@ -290,7 +291,7 @@ export class Shadows {
      * - picked building triggers per-building compute and thematic refresh
      */
     protected updateMapListeners(): void {
-        this.map.events.on(MapEvent.PICKING, async ({ selection, layerId }) => {
+        this.map.events.on(MapEvent.PICKING, async ({ selection, layerId }: MapEventData) => {
             if (layerId !== 'table_osm_buildings') return;
             if (selection.length === 0) {
                 this.clearSelectedBuildingState();
