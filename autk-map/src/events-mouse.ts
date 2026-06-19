@@ -33,6 +33,12 @@ export class MouseEvents {
     private _lastPoint: number[];
     /** Current pointer interaction state. */
     private _status: MouseStatus;
+    /** Active touch pointers keyed by pointer id, stored in canvas-local CSS pixels. */
+    private _activePointers: Map<number, number[]> = new Map();
+    /** Previous two-finger gesture center in canvas-local CSS pixels. */
+    private _lastGestureCenter: number[] | null = null;
+    /** Previous two-finger distance in canvas-local CSS pixels. */
+    private _lastGestureDistance: number | null = null;
 
     /** Bound wheel handler reference used for safe add/remove listener calls. */
     private _onWheel: (e: WheelEvent) => void;
@@ -40,12 +46,18 @@ export class MouseEvents {
     private _onPointerDown: (e: PointerEvent) => void;
     /** Bound pointerup handler reference used for safe add/remove listener calls. */
     private _onPointerUp: (e: PointerEvent) => void;
+    /** Bound pointercancel handler reference used for safe add/remove listener calls. */
+    private _onPointerCancel: (e: PointerEvent) => void;
     /** Bound contextmenu handler reference used for safe add/remove listener calls. */
     private _onContextMenu: (e: PointerEvent) => void;
     /** Bound pointermove handler reference used for safe add/remove listener calls. */
     private _onPointerMove: (e: PointerEvent) => void;
     /** Bound double-click handler reference used for safe add/remove listener calls. */
     private _onDblClick: (e: MouseEvent) => void;
+    /** Previous inline touch-action value restored during teardown. */
+    private _previousTouchAction: string = '';
+    /** Previous inline iOS touch callout value restored during teardown. */
+    private _previousWebkitTouchCallout: string = '';
 
     /**
      * Creates a mouse and pointer interaction controller for a map instance.
@@ -60,6 +72,7 @@ export class MouseEvents {
         this._onWheel = this.mouseWheel.bind(this);
         this._onPointerDown = this.pointerDown.bind(this);
         this._onPointerUp = this.pointerUp.bind(this);
+        this._onPointerCancel = this.pointerUp.bind(this);
         this._onContextMenu = this.contextMenu.bind(this);
         this._onPointerMove = this.pointerMove.bind(this);
         this._onDblClick = this.mouseDoubleClick.bind(this);
@@ -81,12 +94,21 @@ export class MouseEvents {
      */
     bindEvents(): void {
         const canvas = this._map.renderer.canvas;
+        const canvasStyle = canvas.style;
+
+        this._previousTouchAction = canvasStyle.touchAction;
+        this._previousWebkitTouchCallout = canvasStyle.getPropertyValue('-webkit-touch-callout');
+
+        canvasStyle.touchAction = 'none';
+        canvasStyle.setProperty('-webkit-touch-callout', 'none');
+
         canvas.addEventListener('wheel', this._onWheel, { passive: false });
         canvas.addEventListener('contextmenu', this._onContextMenu as any, false);
         canvas.addEventListener('dblclick', this._onDblClick, false);
         document.addEventListener('pointerdown', this._onPointerDown, { capture: true });
         document.addEventListener('pointermove', this._onPointerMove, { capture: true });
         document.addEventListener('pointerup',   this._onPointerUp,   { capture: true });
+        document.addEventListener('pointercancel', this._onPointerCancel, { capture: true });
     }
 
     /**
@@ -100,12 +122,18 @@ export class MouseEvents {
      */
     destroyEvents(): void {
         const canvas = this._map.renderer.canvas;
+        const canvasStyle = canvas.style;
+
+        canvasStyle.touchAction = this._previousTouchAction;
+        canvasStyle.setProperty('-webkit-touch-callout', this._previousWebkitTouchCallout);
+
         canvas.removeEventListener('wheel', this._onWheel);
         canvas.removeEventListener('contextmenu', this._onContextMenu as any);
         canvas.removeEventListener('dblclick', this._onDblClick);
         document.removeEventListener('pointerdown', this._onPointerDown, { capture: true });
         document.removeEventListener('pointermove', this._onPointerMove, { capture: true });
         document.removeEventListener('pointerup',   this._onPointerUp,   { capture: true });
+        document.removeEventListener('pointercancel', this._onPointerCancel, { capture: true });
     }
 
     /**
@@ -132,15 +160,26 @@ export class MouseEvents {
      * @returns Records the drag start position and switches the interaction state to drag when the event targets the canvas.
      */
     pointerDown(event: PointerEvent): void {
-        if (event.target !== this._map.renderer.canvas) return;
+        const canvas = this._map.renderer.canvas;
+        if (event.target !== canvas) return;
 
         this._map.canvas.focus({ preventScroll: true });
 
         if (event.button === 0 || event.button === 1) {
             event.preventDefault();
             event.stopPropagation();
-            this._lastPoint = this._getPoint(event);
+
+            const point = this._getPoint(event);
+            this._lastPoint = point;
             this._status = MouseStatus.DRAG;
+
+            if (event.pointerType === 'touch') {
+                this._activePointers.set(event.pointerId, point);
+                canvas.setPointerCapture?.(event.pointerId);
+                if (this._activePointers.size >= 2) {
+                    this._updateGestureState();
+                }
+            }
         }
     }
 
@@ -159,6 +198,14 @@ export class MouseEvents {
      * @returns Updates the camera and the stored pointer position while an active drag is in progress.
      */
     pointerMove(event: PointerEvent): void {
+        if (event.pointerType === 'touch' && this._activePointers.has(event.pointerId)) {
+            this._activePointers.set(event.pointerId, this._getPoint(event));
+            if (this._activePointers.size >= 2) {
+                this._handleMultiTouchMove(event);
+                return;
+            }
+        }
+
         if (this._status === MouseStatus.IDLE && (event.buttons === 1 || event.buttons === 4)
                 && event.target === this._map.renderer.canvas) {
             this._lastPoint = this._getPoint(event);
@@ -184,6 +231,9 @@ export class MouseEvents {
         }
 
         this._lastPoint = point;
+        if (event.pointerType === 'touch') {
+            this._activePointers.set(event.pointerId, point);
+        }
     }
 
     /**
@@ -195,6 +245,29 @@ export class MouseEvents {
      * @returns Resets the interaction state to idle and suppresses the handled release event.
      */
     pointerUp(event: PointerEvent): void {
+        const canvas = this._map.renderer.canvas;
+        const wasTouchPointer = this._activePointers.delete(event.pointerId);
+        if (canvas.hasPointerCapture?.(event.pointerId)) {
+            canvas.releasePointerCapture(event.pointerId);
+        }
+
+        if (wasTouchPointer) {
+            if (this._activePointers.size >= 2) {
+                this._updateGestureState();
+            } else if (this._activePointers.size === 1) {
+                this._lastPoint = Array.from(this._activePointers.values())[0];
+                this._clearGestureState();
+                this._status = MouseStatus.DRAG;
+            } else {
+                this._clearGestureState();
+                this._status = MouseStatus.IDLE;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
         if (this._status !== MouseStatus.DRAG) return;
 
         event.preventDefault();
@@ -245,6 +318,78 @@ export class MouseEvents {
         if (activePickingLayer?.layerRenderInfo.isPick) {
             activePickingLayer.layerRenderInfo.pickedComps = [mouseX, mouseY];
         }
+    }
+
+    /**
+     * Applies pinch zoom and two-finger orbit/tilt from active touch pointers.
+     *
+     * Distance changes drive zoom around the gesture midpoint. When the
+     * distance is stable, midpoint movement maps to the same yaw/pitch path as
+     * desktop Shift-drag.
+     *
+     * @param event Pointer move event for one of the active touch pointers.
+     * @returns Updates the camera and cached two-finger gesture state.
+     */
+    private _handleMultiTouchMove(event: PointerEvent): void {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const gesture = this._getGesture();
+        if (!gesture) return;
+
+        const { center, distance } = gesture;
+        const cssWidth = this._map.renderer.cssWidth;
+        const cssHeight = this._map.renderer.cssHeight;
+
+        if (this._lastGestureCenter && this._lastGestureDistance !== null) {
+            const distanceDelta = distance - this._lastGestureDistance;
+            const centerDx = -center[0] + this._lastGestureCenter[0];
+            const centerDy = center[1] - this._lastGestureCenter[1];
+
+            if (Math.abs(distanceDelta) > 1) {
+                this._map.camera.zoom(-distanceDelta * 0.01, center[0] / cssWidth, 1.0 - center[1] / cssHeight);
+            } else {
+                this._map.camera.yaw(centerDx / cssWidth);
+                this._map.camera.pitch(centerDy / cssHeight);
+            }
+        }
+
+        this._lastGestureCenter = center;
+        this._lastGestureDistance = distance;
+    }
+
+    /**
+     * Initializes cached center and distance for the current two-finger gesture.
+     */
+    private _updateGestureState(): void {
+        const gesture = this._getGesture();
+        this._lastGestureCenter = gesture?.center ?? null;
+        this._lastGestureDistance = gesture?.distance ?? null;
+    }
+
+    /**
+     * Clears cached two-finger gesture state.
+     */
+    private _clearGestureState(): void {
+        this._lastGestureCenter = null;
+        this._lastGestureDistance = null;
+    }
+
+    /**
+     * Computes the midpoint and distance for the first two active touch pointers.
+     */
+    private _getGesture(): { center: number[], distance: number } | null {
+        const points = Array.from(this._activePointers.values());
+        if (points.length < 2) return null;
+
+        const [a, b] = points;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+
+        return {
+            center: [(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5],
+            distance: Math.hypot(dx, dy),
+        };
     }
 
     /**

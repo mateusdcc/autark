@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Autark Gallery</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 2rem;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #1f2937;
+            background: #f8fafc;
+        }
+
+        main {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin: 0 0 0.5rem;
+        }
+
+        p {
+            margin: 0 0 2rem;
+            color: #64748b;
+        }
+
+        section {
+            margin-bottom: 2rem;
+            padding: 1.25rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: white;
+        }
+
+        h2 {
+            margin: 0 0 1rem;
+            font-size: 1.25rem;
+        }
+
+        ul {
+            margin: 0;
+            padding-left: 1.25rem;
+            columns: 2;
+            column-gap: 2rem;
+        }
+
+        li {
+            break-inside: avoid;
+            margin-bottom: 0.5rem;
+        }
+
+        a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 720px) {
+            body {
+                padding: 1rem;
+            }
+
+            ul {
+                columns: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Autark Gallery</h1>
+        <p>Examples for <code>autk-map</code> and <code>autk-plot</code>.</p>
+
+        <section>
+            <h2>autk-map</h2>
+            <ul>
+                <li><a href="/src/autk-map/building-picking.html">building-picking</a></li>
+                <li><a href="/src/autk-map/camera-animation-vis.html">camera-animation-vis</a></li>
+                <li><a href="/src/autk-map/colormap-categorical.html">colormap-categorical</a></li>
+                <li><a href="/src/autk-map/colormap-diverging.html">colormap-diverging</a></li>
+                <li><a href="/src/autk-map/compute-function.html">compute-function</a></li>
+                <li><a href="/src/autk-map/compute-osm-function.html">compute-osm-function</a></li>
+                <li><a href="/src/autk-map/compute-render-osm-sky-exposure.html">compute-render-osm-sky-exposure</a></li>
+                <li><a href="/src/autk-map/compute-render-osm-view-score.html">compute-render-osm-view-score</a></li>
+                <li><a href="/src/autk-map/compute-render-osm-visibility.html">compute-render-osm-visibility</a></li>
+                <li><a href="/src/autk-map/csv-wkt-vis.html">csv-wkt-vis</a></li>
+                <li><a href="/src/autk-map/geojson-boundaries-vis.html">geojson-boundaries-vis</a></li>
+                <li><a href="/src/autk-map/geojson-lines-vis.html">geojson-lines-vis</a></li>
+                <li><a href="/src/autk-map/geojson-vis.html">geojson-vis</a></li>
+                <li><a href="/src/autk-map/heatmap-vis.html">heatmap-vis</a></li>
+                <li><a href="/src/autk-map/heatmap-vis-geojson.html">heatmap-vis-geojson</a></li>
+                <li><a href="/src/autk-map/json-wkt-vis.html">json-wkt-vis</a></li>
+                <li><a href="/src/autk-map/layer-opacity.html">layer-opacity</a></li>
+                <li><a href="/src/autk-map/osm-layers-api.html">osm-layers-api</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-chicago.html">osm-layers-api-chicago</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-parks.html">osm-layers-api-manhattan-parks</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-s+p.html">osm-layers-api-manhattan-s+p</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-s+w.html">osm-layers-api-manhattan-s+w</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-surface.html">osm-layers-api-manhattan-surface</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-w+p.html">osm-layers-api-manhattan-w+p</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-manhattan-water.html">osm-layers-api-manhattan-water</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-multi.html">osm-layers-api-multi</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-niteroi.html">osm-layers-api-niteroi</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-paris.html">osm-layers-api-paris</a></li>
+                <li><a href="/src/autk-map/osm-layers-api-workspaces.html">osm-layers-api-workspaces</a></li>
+                <li><a href="/src/autk-map/osm-layers-pbf.html">osm-layers-pbf</a></li>
+                <li><a href="/src/autk-map/spatial-join.html">spatial-join</a></li>
+                <li><a href="/src/autk-map/spatial-join-buildings.html">spatial-join-buildings</a></li>
+                <li><a href="/src/autk-map/spatial-join-multi.html">spatial-join-multi</a></li>
+                <li><a href="/src/autk-map/spatial-join-near.html">spatial-join-near</a></li>
+                <li><a href="/src/autk-map/standalone-geojson-vis.html">standalone-geojson-vis</a></li>
+                <li><a href="/src/autk-map/standalone-points-geojson-vis.html">standalone-points-geojson-vis</a></li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>autk-plot</h2>
+            <ul>
+                <li><a href="/src/autk-plot/barchart-click.html">barchart-click</a></li>
+                <li><a href="/src/autk-plot/heatmatrix-click.html">heatmatrix-click</a></li>
+                <li><a href="/src/autk-plot/histogram-brush.html">histogram-brush</a></li>
+                <li><a href="/src/autk-plot/histogram-brush-landuse.html">histogram-brush-landuse</a></li>
+                <li><a href="/src/autk-plot/histogram-rebuild.html">histogram-rebuild</a></li>
+                <li><a href="/src/autk-plot/parallel-coordinates.html">parallel-coordinates</a></li>
+                <li><a href="/src/autk-plot/scatterplot-brush.html">scatterplot-brush</a></li>
+                <li><a href="/src/autk-plot/scatterplot-click.html">scatterplot-click</a></li>
+                <li><a href="/src/autk-plot/table-click.html">table-click</a></li>
+                <li><a href="/src/autk-plot/temporal-events-click.html">temporal-events-click</a></li>
+                <li><a href="/src/autk-plot/timeseries-click.html">timeseries-click</a></li>
+            </ul>
+        </section>
+    </main>
+</body>
+
+</html>

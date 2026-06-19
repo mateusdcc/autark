@@ -29,18 +29,25 @@
         const plot = document.querySelector('#plot');
         const bar = document.querySelector('#plotBar');
 
-        bar.addEventListener('mousedown', mouseDown);
+        bar.style.touchAction = 'none';
+        bar.addEventListener('pointerdown', pointerDown);
+        bar.addEventListener('pointermove', pointerMove);
+        bar.addEventListener('pointerup', pointerUp);
+        bar.addEventListener('pointercancel', pointerUp);
         plot.style.visibility = 'visible';
 
-        function mouseDown(e) {
+        function pointerDown(e) {
             startX = e.clientX;
             startY = e.clientY;
+            bar.setPointerCapture(e.pointerId);
 
-            document.addEventListener('mousemove', mouseMove);
-            document.addEventListener('mouseup', mouseUp);
+            e.preventDefault();
+            e.stopPropagation();
         }
 
-        function mouseMove(e) {
+        function pointerMove(e) {
+            if (!bar.hasPointerCapture(e.pointerId)) return;
+
             newX = startX - e.clientX;
             newY = startY - e.clientY;
 
@@ -54,8 +61,13 @@
             e.stopPropagation();
         }
 
-        function mouseUp() {
-            document.removeEventListener('mousemove', mouseMove);
+        function pointerUp(e) {
+            if (bar.hasPointerCapture(e.pointerId)) {
+                bar.releasePointerCapture(e.pointerId);
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
         }
     }
     floatingPlot();

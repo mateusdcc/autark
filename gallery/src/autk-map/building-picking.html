@@ -35,6 +35,7 @@
         if (!plot || !bar || !toggle) return;
 
         plot.style.visibility = 'visible';
+        bar.style.touchAction = 'none';
         toggle.addEventListener('click', () => plot.classList.toggle('hidden-plot'));
 
         bar.addEventListener('pointerdown', e => {

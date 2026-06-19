@@ -131,6 +131,8 @@ export abstract class PlotBaseInteractive extends PlotBaseData {
      * @throws Never throws.
      */
     public configureSignalListeners(): void {
+        this.configureTouchInteractionStyles();
+
         for (const event of this._enabledEvents) {
             if (event === PlotEvent.CLICK) {
                 this.clickEvent();
@@ -142,6 +144,16 @@ export abstract class PlotBaseInteractive extends PlotBaseData {
                 this.brushYEvent();
             }
         }
+    }
+
+    /**
+     * Prevents browser touch gestures from stealing plot interactions.
+     */
+    protected configureTouchInteractionStyles(): void {
+        const root = d3.select(this._div);
+        root.selectAll<SVGSVGElement, unknown>('svg').style('touch-action', 'none');
+        root.selectAll<SVGGElement, unknown>('.autkBrush, .autkMarksGroup').style('touch-action', 'none');
+        root.selectAll<SVGRectElement, unknown>('.autkClear').style('touch-action', 'none');
     }
 
     /**

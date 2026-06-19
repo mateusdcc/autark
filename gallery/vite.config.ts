@@ -37,7 +37,7 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
-    open: process.env.PLAYWRIGHT ? false : '/src/autk-plot/table-click.html',
+    open: process.env.PLAYWRIGHT ? false : '/',
     cors: {
       origin: '*',
       allowedHeaders: 'Range, Content-Type, Authorization',
