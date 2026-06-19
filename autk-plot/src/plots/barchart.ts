@@ -41,8 +41,6 @@ import type { PlotConfig } from '../api';
 
 import { PlotBaseInteractive } from '../plot-base-interactive';
 
-import { PlotEvent } from '../types-events';
-
 /**
  * Bar plot implementation supporting categorical values and binned mode.
  *
@@ -63,7 +61,7 @@ export class Barchart extends PlotBaseInteractive {
      * @throws If a transform is configured with a preset other than `binning-1d`.
      */
     constructor(config: PlotConfig) {
-        if (config.events === undefined) { config.events = [PlotEvent.CLICK]; }
+        if (config.events === undefined) { config.events = []; }
         if (config.tickFormats === undefined) { 
             config.tickFormats = ['~s', '~s']; 
         }

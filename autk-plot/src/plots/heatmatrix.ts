@@ -28,7 +28,6 @@ import { valueAtPath } from '@urban-toolkit/autk-core';
 import type { PlotConfig } from '../api';
 
 import { PlotBaseInteractive } from '../plot-base-interactive';
-import { PlotEvent } from '../types-events';
 
 import type { Binning2dCellRow } from '../transforms';
 
@@ -48,7 +47,7 @@ export class Heatmatrix extends PlotBaseInteractive {
      * @throws If the transform preset is missing or not `'binning-2d'`.
      */
     constructor(config: PlotConfig) {
-        if (config.events === undefined) { config.events = [PlotEvent.CLICK]; }
+        if (config.events === undefined) { config.events = []; }
         if (config.tickFormats === undefined) { config.tickFormats = ['', '']; }
 
         if (!config.transform || config.transform.preset !== 'binning-2d') {

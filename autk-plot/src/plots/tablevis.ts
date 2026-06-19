@@ -35,7 +35,6 @@ import type { SortTransformConfig, PlotConfig } from '../api';
 
 import { PlotBaseInteractive } from '../plot-base-interactive';
 import { PlotStyle } from '../plot-style';
-import { PlotEvent } from '../types-events';
 
 /**
  * Table-based visualization with sorting and row selection interactions.
@@ -51,7 +50,7 @@ export class TableVis extends PlotBaseInteractive {
      * @throws If a transform is configured with a preset other than `sort`.
      */
     constructor(config: PlotConfig) {
-        if (config.events === undefined) { config.events = [PlotEvent.CLICK]; }
+        if (config.events === undefined) { config.events = []; }
 
         if (config.transform && config.transform.preset !== 'sort') {
             throw new Error('TableVis only supports the sort transform preset.');

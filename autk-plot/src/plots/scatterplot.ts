@@ -33,7 +33,6 @@ import type { PlotConfig } from '../api';
 
 import { PlotBaseInteractive } from '../plot-base-interactive';
 import { PlotStyle } from '../plot-style';
-import { PlotEvent } from '../types-events';
 
 /**
  * Two-dimensional scatter plot with optional click/brush interactions.
@@ -57,7 +56,7 @@ export class Scatterplot extends PlotBaseInteractive {
      * @throws If fewer than two active axis bindings are available.
      */
     constructor(config: PlotConfig) {
-        if(config.events === undefined) { config.events = [PlotEvent.CLICK]; }
+        if(config.events === undefined) { config.events = []; }
         if (config.tickFormats === undefined) {
             config.tickFormats = ['~s', '~s'];
         }

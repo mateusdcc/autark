@@ -35,7 +35,6 @@ import type { PlotConfig } from '../api';
 
 import { PlotBaseInteractive } from '../plot-base-interactive';
 import { PlotStyle } from '../plot-style';
-import { PlotEvent } from '../types-events';
 
 /**
  * Parallel coordinates plot for multivariate feature exploration.
@@ -56,7 +55,7 @@ export class ParallelCoordinates extends PlotBaseInteractive {
      * @param config Plot configuration for parallel coordinates rendering.
      */
     constructor(config: PlotConfig) {
-        if (config.events === undefined) { config.events = [PlotEvent.CLICK]; }
+        if (config.events === undefined) { config.events = []; }
         if (config.tickFormats === undefined) {
             config.tickFormats = ['~s', '~s'];
         }
