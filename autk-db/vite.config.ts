@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
@@ -16,19 +16,10 @@ function duckdbAssets() {
     generateBundle() {
       for (const fileName of assets) {
         const sourcePath = resolve(__dirname, '../node_modules/@duckdb/duckdb-wasm/dist', fileName);
-        const mapPath = `${sourcePath}.map`;
         let source: Buffer | string = readFileSync(sourcePath);
 
         if (fileName.endsWith('.worker.js')) {
-          if (existsSync(mapPath)) {
-            this.emitFile({
-              type: 'asset',
-              fileName: `${fileName}.map`,
-              source: readFileSync(mapPath),
-            });
-          } else {
-            source = source.toString().replace(/\n\/\/# sourceMappingURL=.*\.map\s*$/, '\n');
-          }
+          source = source.toString().replace(/\n\/\/# sourceMappingURL=.*\.map\s*$/, '\n');
         }
 
         this.emitFile({
