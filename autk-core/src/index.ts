@@ -28,6 +28,15 @@ export type {
     ColorMapConfig,
 } from './types-colormap';
 
+export type {
+    /** Two-point numeric domain used by sequential color interpolators. */
+    SequentialDomain,
+    /** Three-point numeric domain used by diverging color interpolators. */
+    DivergingDomain,
+    /** Ordered set of category labels used by categorical color schemes. */
+    CategoricalDomain,
+} from './colormap';
+
 /** Hex, RGBA, and texture-ready color representations. */
 // ─── Color primitives ────────────────────────────────────────────────────────
 

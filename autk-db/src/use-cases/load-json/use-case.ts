@@ -11,7 +11,7 @@ import { DEFAULT_GEO_COLUMN_NAME, DEFAULT_WORKSPACE_NAME, DEFAULT_INPUT_COORDINA
  *
  * Accepts data from a remote URL or an in-memory array. When `geometryColumns` is provided, point or WKT-based geometry is constructed, validated, and indexed with an R-tree.
  *
- * @note Requires an active `AsyncDuckDB` instance and connection.
+ * @remarks Requires an active `AsyncDuckDB` instance and connection.
  */
 export class LoadJsonUseCase {
   private db: AsyncDuckDB;
@@ -31,7 +31,7 @@ export class LoadJsonUseCase {
   /**
    * Fetches or serializes JSON data, loads it into DuckDB, and optionally creates and indexes a geometry column.
    *
-   * @note Exactly one of `jsonFileUrl` or `jsonObject` must be provided.
+   * @remarks Exactly one of `jsonFileUrl` or `jsonObject` must be provided.
    * @param params - configuration including data source, output table name, and optional geometry strategy.
    * @returns metadata describing the created table: source, name, columns, and geometry type.
    * @throws {Error} If neither or both data sources are provided, if required geometry column names are empty, if null geometries are produced, if WKT contains unsupported or mixed geometry types, or if the HTTP fetch fails.

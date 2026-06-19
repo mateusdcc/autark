@@ -10,7 +10,7 @@ import { getColumnsFromDuckDbTableDescribe } from '../../utils';
  * Builds a heatmap by creating a spatial grid, aggregating source data into cells via NEAR join,
  * and converting the result to a raster table with bands.
  *
- * @note Creates an RTREE index on the grid geometry for efficient spatial joins.
+ * @remarks Creates an RTREE index on the grid geometry for efficient spatial joins.
  */
 export class BuildHeatmapUseCase {
     private spatialJoinUseCase: SpatialJoinUseCase;

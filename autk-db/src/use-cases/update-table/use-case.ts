@@ -23,7 +23,7 @@ import {
  *
  * Supports both layer tables (GeoJSON with geometry) and plain data tables (CSV/JSON-derived).
  *
- * @note Requires an active `AsyncDuckDB` instance and connection.
+ * @remarks Requires an active `AsyncDuckDB` instance and connection.
  */
 export class UpdateTableUseCase {
   /** DuckDB instance used for temporary file registration and cleanup. */

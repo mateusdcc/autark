@@ -4,7 +4,7 @@ import type { LayerType } from '@urban-toolkit/autk-core';
 /**
  * Builds a SQL query that exports a layer table as a GeoJSON FeatureCollection.
  *
- * @note Raster layers return a single feature with raster metadata. Building layers
+ * @remarks Raster layers return a single feature with raster metadata. Building layers
  *   without `building_id` group geometries by row; those with it merge parts per building.
  * @param layerTable - The layer table including its type and column definitions.
  * @param workspace - Workspace (schema) name containing the table.
@@ -97,7 +97,7 @@ export const GET_LAYER_AS_GEOJSON_QUERY = (layerTable: Table & { type: LayerType
 /**
  * Builds a SQL expression that extracts table properties as JSON.
  *
- * @note Returns `COALESCE(CAST(properties AS JSON), '{}'::JSON)` when a dedicated
+ * @remarks Returns `COALESCE(CAST(properties AS JSON), '{}'::JSON)` when a dedicated
  *   `properties` column exists, otherwise constructs a `json_object` from non-geometry columns.
  * @param layerTable - The table with its column definitions.
  * @returns A SQL fragment that evaluates to a JSON object of property values.

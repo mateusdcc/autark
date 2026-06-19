@@ -24,6 +24,8 @@ export { AutkMapUi } from './map-ui';
 export type {
     /** Parameters for loading a GeoJSON feature collection as a map layer. */
     LoadCollectionParams,
+    /** Optional geometry-building configuration applied while loading a collection. */
+    LoadCollectionConfig,
     /** Parameters for loading a prebuilt mesh directly into the map. */
     LoadMeshParams,
     /** Parameters for updating raster values and related raster color state. */

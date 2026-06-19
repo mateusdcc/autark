@@ -18,7 +18,7 @@ export interface HeatmapGroupBy {
 /**
  * Parameters for building a heatmap from spatially joined data.
  *
- * @note Requires a valid bounding box and source table to be passed at execution time.
+ * @remarks Requires a valid bounding box and source table to be passed at execution time.
  */
 export interface BuildHeatmapParams {
     /** Name of the source table to join against the grid. */

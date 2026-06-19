@@ -9,7 +9,7 @@ import { toPlain } from '../../utils';
  *
  * Returns the full table contents with column names as keys.
  *
- * @note Requires an active `AsyncDuckDBConnection`.
+ * @remarks Requires an active `AsyncDuckDBConnection`.
  */
 export class GetTableUseCase {
   /** DuckDB connection used to execute queries. */

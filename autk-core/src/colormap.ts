@@ -25,11 +25,11 @@ import {
 import type { TypedArray } from './types-buffer';
 
 /** Two-point numeric domain used by sequential color interpolators. */
-type SequentialDomain = [number, number];
+export type SequentialDomain = [number, number];
 /** Three-point numeric domain used by diverging color interpolators. */
-type DivergingDomain = [number, number, number];
+export type DivergingDomain = [number, number, number];
 /** Ordered set of category labels used by categorical color schemes. */
-type CategoricalDomain = string[];
+export type CategoricalDomain = string[];
 
 /** Default number of texels used to sample continuous color maps. */
 export const DEFAULT_COLORMAP_RESOLUTION = 256;

@@ -10,7 +10,7 @@ import { getColumnsFromDuckDbTableDescribe } from '../../utils';
  *
  * The join always modifies the root table in place using a LEFT join.
  *
- * @note Requires an active `AsyncDuckDBConnection`.
+ * @remarks Requires an active `AsyncDuckDBConnection`.
  */
 export class SpatialJoinUseCase {
   /** DuckDB connection used to execute SQL queries. */
