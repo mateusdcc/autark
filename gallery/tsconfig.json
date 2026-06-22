@@ -9,7 +9,7 @@
     "paths": {
       "@urban-toolkit/autk-core": ["../autk-core/src/index.ts"],
       "@urban-toolkit/autk-compute": ["../autk-compute/src/main.ts"],
-      "@urban-toolkit/autk-db": ["../autk-db/src/main.ts"],
+      "@urban-toolkit/autk-db": ["../autk-db/src/index.ts"],
       "@urban-toolkit/autk-map": ["../autk-map/src/index.ts"],
       "@urban-toolkit/autk-plot": ["../autk-plot/src/index.ts"]
     },
