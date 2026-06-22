@@ -6,14 +6,27 @@ export interface LoadGeoTiffParams {
   /** Name of the output DuckDB table. */
   outputTableName: string;
   /**
-   * CRS of the input GeoTIFF file (source). Defaults to EPSG:4326.
-   * The geometry will be transformed from this CRS to the workspace CRS.
+   * CRS of the input GeoTIFF file (source).
+   *
+   * Defaults to `EPSG:4326` (lat/lng) when omitted.
+   * The raster extent metadata will be transformed from this CRS to the workspace CRS.
+   * If the raster is not in `EPSG:4326`, pass the correct CRS explicitly.
    */
   coordinateFormat?: string;
   /**
-   * Maximum number of pixels to load. Defaults to 500 000.
-   * An error is thrown if the full raster exceeds this limit.
+   * Maximum number of raster cells to decode into memory.
+   * Larger rasters are downsampled to fit this limit.
+   * Defaults to 1 000 000.
+   */
+  maxRasterCells?: number;
+  /**
+   * Deprecated alias for `maxRasterCells`.
    */
   maxPixels?: number;
+  /**
+   * Resampling method used when downsampling large rasters.
+   * Defaults to `'bilinear'`.
+   */
+  resampleMethod?: 'nearest' | 'bilinear';
   workspace?: string;
 }

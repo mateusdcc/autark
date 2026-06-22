@@ -35,6 +35,7 @@ import { GetTableOutput, GetTableUseCase } from './use-cases/get-table';
 import { LoadCsvParams, LoadCsvUseCase } from './use-cases/load-csv';
 import { LoadGeojsonParams, LoadGeojsonUseCase } from './use-cases/load-geojson';
 import { LoadGeoTiffParams, LoadGeoTiffUseCase } from './use-cases/load-geotiff';
+import { deleteRasterPayload } from './raster-store';
 import { LoadJsonParams, LoadJsonUseCase } from './use-cases/load-json';
 import { LoadOsmLayerParams, LoadOsmLayerUseCase } from './use-cases/load-osm-layer';
 import { LoadOsmFromOverpassApiUseCase, LoadOsmParams, OsmLoadTimings } from './use-cases/load-osm-overpass';
@@ -533,11 +534,13 @@ export class AutkDb {
     }
 
     /**
-     * Loads a GeoTIFF raster as a spatially-indexed table with per-pixel geometry and band properties.
+     * Loads a GeoTIFF raster as a compact raster table with metadata and flat in-memory band arrays.
+     *
+     * Large rasters are downsampled when needed so browser memory use stays bounded.
      *
      * @param params - File URL or ArrayBuffer, table name, and optional CRS override.
      * @returns The created GeoTIFF table metadata.
-     * @throws If the database is not initialized, both sources are provided, or the raster exceeds `maxPixels`.
+     * @throws If the database is not initialized or if the input sources are invalid.
      * @example
      * const raster = await db.loadGeoTiff({
      *   geotiffFileUrl: '/data/lst.tif',
@@ -564,18 +567,21 @@ export class AutkDb {
     }
 
     /**
-     * Exports a loaded GeoTIFF table as a packed raster FeatureCollection for rendering.
+     * Exports a compact raster table as a packed raster FeatureCollection for rendering.
      *
-     * Pass the result to `AutkMap.loadRasterCollection()` with a property callback that extracts the desired band.
+     * This applies to GeoTIFF rasters and compact heatmap rasters.
+     * The returned feature contains flat band arrays (`band_1`, `band_2`, ...) and raster resolution metadata.
+     * Pass one of the band ids as the raster property selector in `AutkMap.loadCollection()`.
      *
-     * @param tableName - Name of the GeoTIFF table created by `loadGeoTiff`.
-     * @returns A FeatureCollection with a single feature containing pixel data and resolution metadata.
-     * @throws If the database is not initialized, the table is missing, or it is not a GeoTIFF table.
+     * @param tableName - Name of the compact raster table.
+     * @returns A FeatureCollection with a single feature containing flat band arrays and resolution metadata.
+     * @throws If the database is not initialized, the table is missing, or it is not a compact raster table.
      * @example
      * const fc = await db.getRaster('temperature');
-     * map.loadRasterCollection('temperature', {
+     * map.loadCollection('temperature', {
      *   collection: fc,
-     *   property: (cell) => cell.band_1,
+     *   type: 'raster',
+     *   property: 'band_1',
      * });
      */
     async getRaster(tableName: string): Promise<FeatureCollection<null>> {
@@ -583,8 +589,8 @@ export class AutkDb {
             throw new Error('Database not initialized. Please call init() first.');
 
         const table = this.getTablesMetadata().find((t) => t.name === tableName);
-        if (!table || table.source !== 'geotiff')
-            throw new Error(`Table ${tableName} is not a GeoTiff table.`);
+        if (!table || !isRasterTable(table) || this.tableHasGeometry(table))
+            throw new Error(`Table ${tableName} is not a compact raster table.`);
 
         return this.getRasterUseCase.exec(tableName, this.currentWorkspace);
     }
@@ -609,7 +615,9 @@ export class AutkDb {
         if (!layerTable) throw new Error(`Table ${layerTableName} not found.`);
         if (!isRenderableTable(layerTable)) throw new Error(`Table ${layerTableName} is not a renderable layer.`);
 
-        const featureCollection = await this.getLayerUseCase.exec(layerTable, this.currentWorkspace);
+        const featureCollection = layerTable.type === 'raster' && !this.tableHasGeometry(layerTable)
+            ? await this.getRaster(layerTableName) as unknown as FeatureCollection
+            : await this.getLayerUseCase.exec(layerTable, this.currentWorkspace);
 
         const workspaceData = this.getCurrentWorkspaceData();
         if (workspaceData.workspaceBoundingBox) {
@@ -818,6 +826,10 @@ export class AutkDb {
         await this.dropTableUseCase.exec({ tableName, workspace: this.currentWorkspace });
 
         const workspaceData = this.getCurrentWorkspaceData();
+        const droppedTable = workspaceData.tables.find((t) => t.name === tableName);
+        if (droppedTable && isRasterTable(droppedTable) && !this.tableHasGeometry(droppedTable)) {
+            deleteRasterPayload(this.currentWorkspace, tableName);
+        }
         workspaceData.tables = workspaceData.tables.filter((t) => t.name !== tableName);
         if (workspaceData.workspaceCropLayer === tableName) {
             workspaceData.workspaceCropLayer = null;

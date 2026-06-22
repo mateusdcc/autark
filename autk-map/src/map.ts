@@ -486,7 +486,7 @@ export class AutkMap {
      * @param id Layer identifier.
      * @param params Update parameters.
      * @param params.collection GeoTIFF-derived feature collection.
-     * @param params.property Dot-path accessor for each raster cell.
+     * @param params.property Dot-path accessor for a flat raster band array on feature properties.
      * @param params.transferFunction Optional opacity transfer-function configuration.
      * @throws Never throws. Errors are logged to the console.
      */
@@ -500,12 +500,30 @@ export class AutkMap {
         }
 
         const props = collection.features[0].properties;
-        if (!props || !Array.isArray(props.raster)) {
+        if (!props) {
             console.warn(`Raster update skipped for layer '${id}': invalid raster payload.`);
             return;
         }
 
-        const rasterValues = new Float32Array(props.raster.map((row: unknown) => Number(valueAtPath(row, property) ?? 0)));
+        const resolved = valueAtPath(props, property);
+        const rasterValues = resolved instanceof Float32Array
+            ? resolved
+            : ArrayBuffer.isView(resolved) && !(resolved instanceof DataView)
+                ? new Float32Array(Array.from(resolved as unknown as ArrayLike<number>, (value: number) => {
+                    const numeric = Number(value);
+                    return Number.isFinite(numeric) ? numeric : Number.NaN;
+                }))
+                : Array.isArray(resolved)
+                    ? new Float32Array(resolved.map((value: unknown) => {
+                        const numeric = Number(value);
+                        return Number.isFinite(numeric) ? numeric : Number.NaN;
+                    }))
+                    : null;
+
+        if (!rasterValues || rasterValues.length === 0) {
+            console.warn(`Raster update skipped for layer '${id}': invalid raster band '${property}'.`);
+            return;
+        }
 
         const rasterLayer = layer as RasterLayer;
         const config = layer.layerRenderInfo.colormap.config;
@@ -1155,7 +1173,7 @@ export class AutkMap {
      *
      * @param layerName Target layer id.
      * @param geotiff GeoTIFF-derived feature collection.
-     * @param property Value extractor for each raster row/cell payload.
+     * @param property Feature-property path selecting the raster band array.
      * @returns Nothing. The raster layer is created and initialized.
      */
     private createRasterLayer(layerName: string, geotiff: FeatureCollection<Geometry | null>, property: string) {

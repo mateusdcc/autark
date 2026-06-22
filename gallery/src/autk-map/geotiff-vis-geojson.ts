@@ -1,11 +1,9 @@
-// TODO: filter CSV data based on the osm data polygon.
-
 import { AutkDb } from '@urban-toolkit/autk-db';
 import { AutkMap } from '@urban-toolkit/autk-map';
 
 const URL = (import.meta as any).env.BASE_URL;
 
-export class Heatmap {
+export class GeotiffVisGeojson {
     protected map!: AutkMap;
     protected db!: AutkDb;
 
@@ -13,31 +11,15 @@ export class Heatmap {
         this.db = new AutkDb();
         await this.db.init();
 
-       await this.db.loadGeojson({
+        await this.db.loadGeojson({
             geojsonFileUrl: `${URL}data/mnt_neighs.geojson`,
             outputTableName: 'neighborhoods',
         });
 
-        await this.db.loadCsv({
-            csvFileUrl: `${URL}data/noise.csv`,
-            outputTableName: 'noise',
-            geometryColumns: true,
-        });
-
-        await this.db.buildHeatmap({
-            tableJoinName: 'noise',
-            near: { distance: 1000 },
-            outputTableName: 'heatmap',
-            grid: {
-                rows: 30,
-                columns: 30,
-            },
-            groupBy: [
-                    {
-                        column: 'Unique Key',
-                        aggregateFn: 'count'
-                    },
-                ],
+        await this.db.loadGeoTiff({
+            geotiffFileUrl: '/data/mnt_dem.tif',
+            outputTableName: 'mnt_dem',
+            coordinateFormat: 'EPSG:3857',
         });
 
         const canvas = document.querySelector('canvas');
@@ -61,13 +43,11 @@ export class Heatmap {
             this.map.loadCollection(layerData.name, { collection: geojson, type: layerData.type, property: propertyPath });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
-
-        this.map.updateRenderInfo('heatmap', { opacity: 0.5 });
     }
 }
 
 async function main() {
-    const example = new Heatmap();
+    const example = new GeotiffVisGeojson();
     await example.run();
 }
 main();

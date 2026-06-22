@@ -1,16 +1,19 @@
-
 import { AsyncDuckDBConnection } from '@duckdb/duckdb-wasm';
 import { BuildHeatmapParams } from './interfaces';
 import type { BoundingBox } from '@urban-toolkit/autk-core';
 import { RasterBandMetadata, Table, UserTable } from '../../interfaces';
 import { SpatialJoinUseCase } from '../spatial-join/use-case';
-import { getColumnsFromDuckDbTableDescribe } from '../../utils';
+import { getColumnsFromDuckDbTableDescribe, toPlain } from '../../utils';
+import { setRasterPayload } from '../../raster-store';
+import { DEFAULT_WORKSPACE_COORDINATE_FORMAT } from '../../consts';
 
 /**
  * Builds a heatmap by creating a spatial grid, aggregating source data into cells via NEAR join,
- * and converting the result to a raster table with bands.
+ * and materializing the result as a compact raster payload.
  *
- * @remarks Creates an RTREE index on the grid geometry for efficient spatial joins.
+ * @remarks Creates a temporary RTREE-backed point grid for the spatial join, then rewrites the
+ * final output table into a compact one-row raster metadata table and stores flat band arrays
+ * in the shared raster store.
  */
 export class BuildHeatmapUseCase {
     private spatialJoinUseCase: SpatialJoinUseCase;
@@ -23,22 +26,7 @@ export class BuildHeatmapUseCase {
     }
 
     /**
-     * Executes the heatmap build pipeline: grid creation, spatial join, and raster conversion.
-     *
-     * @param params - Heatmap configuration including grid size, aggregation columns, and NEAR distance.
-     * @param tables - Available tables in the workspace; must include the source table referenced by `params.tableJoinName`.
-     * @param boundingBox - Spatial extent defining the grid boundaries. Required.
-     * @param workspace - DuckDB schema name where tables are created and queried.
-     * @returns The resulting heatmap table with updated columns and raster band metadata.
-     * @throws {Error} If `boundingBox` is not provided or the source table is missing from `tables`.
-     * @example
-     * const result = await useCase.exec(
-     *   { tableJoinName: 'points', near: { distance: 50 }, outputTableName: 'heatmap', grid: { rows: 100, columns: 100 } },
-     *   [pointsTable],
-     *   { minLon: -74.1, minLat: 40.6, maxLon: -73.8, maxLat: 40.9 },
-     *   'workspace',
-     * );
-     * console.log(result.bands); // [{ id: 'band_1', label: 'sum_points' }]
+     * Executes the heatmap build pipeline: grid creation, spatial join, and compact raster materialization.
      */
     async exec(
         params: BuildHeatmapParams,
@@ -64,7 +52,7 @@ export class BuildHeatmapUseCase {
             workspace,
         });
 
-        const joinResult = await this.spatialJoinUseCase.exec(
+        await this.spatialJoinUseCase.exec(
             {
                 tableRootName: gridTableName,
                 tableJoinName: params.tableJoinName,
@@ -76,9 +64,13 @@ export class BuildHeatmapUseCase {
         );
 
         const rasterBands = this.getRasterBands(params);
-        await this.transformToRasterFormat(
+        await this.transformToRasterFormat(gridTableName, rasterBands, workspace);
+        await this.materializeCompactRaster(
             gridTableName,
             rasterBands,
+            boundingBox,
+            params.grid.rows,
+            params.grid.columns,
             workspace,
         );
 
@@ -86,19 +78,16 @@ export class BuildHeatmapUseCase {
         const updatedColumns = getColumnsFromDuckDbTableDescribe(describeTableResponse.toArray());
 
         return {
-            ...joinResult,
+            source: 'user',
+            type: 'raster',
+            name: gridTableName,
             columns: updatedColumns,
             bands: rasterBands.map(({ id, label }) => ({ id, label })),
         };
     }
 
     /**
-     * Creates a rectangular grid table with one cell per row/column intersection,
-     * centered within the given bounding box.
-     *
-     * @param params - Grid configuration including bounding box, dimensions, and table name.
-     * @returns The created grid table metadata with geometry column and initial band structure.
-     * @throws {Error} If `rows` or `columns` are zero or negative.
+     * Creates a rectangular grid table with one point per cell center.
      */
     private async createGridTable(params: {
         boundingBox: BoundingBox;
@@ -117,6 +106,8 @@ export class BuildHeatmapUseCase {
         const { minLon, minLat, maxLon, maxLat } = boundingBox;
 
         await this.conn.query(`CREATE OR REPLACE TABLE ${qualifiedTableName} (
+            row_index INTEGER,
+            column_index INTEGER,
             geometry GEOMETRY,
             properties STRUCT(band_1 DOUBLE)
         );`);
@@ -129,7 +120,7 @@ export class BuildHeatmapUseCase {
             for (let column = 0; column < columns; column++) {
                 const centerLon = minLon + (column + 0.5) * lonStep;
                 const centerLat = minLat + (row + 0.5) * latStep;
-                values.push(`(ST_Point(${centerLon}, ${centerLat}), {'band_1': 0::DOUBLE})`);
+                values.push(`(${row}, ${column}, ST_Point(${centerLon}, ${centerLat}), {'band_1': 0::DOUBLE})`);
             }
         }
 
@@ -148,12 +139,7 @@ export class BuildHeatmapUseCase {
     }
 
     /**
-     * Replaces the `properties` column with explicit band columns extracted from JSON,
-     * coalescing missing values to zero.
-     *
-     * @param tableName - Name of the table to transform in-place.
-     * @param bands - Band metadata including JSON paths for value extraction.
-     * @param workspace - DuckDB schema containing the table.
+     * Replaces the `properties` column with explicit band values extracted from the join payload.
      */
     private async transformToRasterFormat(
         tableName: string,
@@ -162,12 +148,14 @@ export class BuildHeatmapUseCase {
     ): Promise<void> {
         const qualifiedTableName = `${workspace}.${tableName}`;
         const bandAssignments = bands
-            .map((band) => `                    '${band.id}': COALESCE(json_extract(properties, '${band.jsonPath}')::DOUBLE, 0)`)
+            .map((band) => `                    '${band.id}': COALESCE(json_extract(properties, '${band.jsonPath}')::DOUBLE, 0)`) 
             .join(',\n');
 
         const transformQuery = `
             CREATE OR REPLACE TABLE ${qualifiedTableName} AS
             SELECT 
+                row_index,
+                column_index,
                 geometry,
                 {
 ${bandAssignments}
@@ -179,14 +167,97 @@ ${bandAssignments}
     }
 
     /**
-     * Derives raster band metadata from the group-by configuration, mapping each
-     * aggregation column to a named band with its JSON extraction path.
-     *
-     * @param params - Heatmap parameters containing the group-by definitions.
-     * @returns Array of band objects with `id`, `label`, and `jsonPath` for each aggregation column.
+     * Extracts the aggregated cell values into flat band arrays, stores them in the raster store,
+     * and rewrites the DuckDB table to compact raster metadata only.
+     */
+    private async materializeCompactRaster(
+        tableName: string,
+        bands: Array<RasterBandMetadata & { jsonPath: string }>,
+        boundingBox: BoundingBox,
+        rows: number,
+        columns: number,
+        workspace: string,
+    ): Promise<void> {
+        const qualifiedTableName = `${workspace}.${tableName}`;
+        const bandSelect = bands.map((band) => `properties.${band.id} AS ${band.id}`).join(',\n          ');
+        const result = await this.conn.query(`
+          SELECT
+            row_index,
+            column_index,
+            ${bandSelect}
+          FROM ${qualifiedTableName}
+          ORDER BY row_index ASC, column_index ASC;
+        `);
+
+        const flatSize = rows * columns;
+        const values = Object.fromEntries(
+            bands.map((band) => [band.id, new Float32Array(flatSize)])
+        ) as Record<string, Float32Array>;
+
+        for (const row of result.toArray()) {
+            const plain = toPlain(row.toJSON() as Record<string, unknown>);
+            const rowIndex = Number(plain.row_index);
+            const columnIndex = Number(plain.column_index);
+            const flatIndex = rowIndex * columns + columnIndex;
+
+            for (const band of bands) {
+                const numeric = Number(plain[band.id]);
+                values[band.id][flatIndex] = Number.isFinite(numeric) ? numeric : 0;
+            }
+        }
+
+        const { minLon, minLat, maxLon, maxLat } = boundingBox;
+        const resX = (maxLon - minLon) / columns;
+        const resY = (maxLat - minLat) / rows;
+
+        setRasterPayload(workspace, tableName, {
+            width: columns,
+            height: rows,
+            originalWidth: columns,
+            originalHeight: rows,
+            minX: minLon,
+            minY: minLat,
+            maxX: maxLon,
+            maxY: maxLat,
+            originX: minLon,
+            originY: maxLat,
+            resX,
+            resY,
+            sourceCrs: DEFAULT_WORKSPACE_COORDINATE_FORMAT,
+            targetCrs: DEFAULT_WORKSPACE_COORDINATE_FORMAT,
+            bands: bands.map(({ id, label }) => ({ id, label })),
+            values,
+        });
+
+        await this.conn.query(`
+          CREATE OR REPLACE TABLE ${qualifiedTableName} AS
+          SELECT
+            ${columns}::INTEGER AS width,
+            ${rows}::INTEGER AS height,
+            ${columns}::INTEGER AS original_width,
+            ${rows}::INTEGER AS original_height,
+            ${minLon}::DOUBLE AS min_x,
+            ${minLat}::DOUBLE AS min_y,
+            ${maxLon}::DOUBLE AS max_x,
+            ${maxLat}::DOUBLE AS max_y,
+            ${minLon}::DOUBLE AS origin_x,
+            ${maxLat}::DOUBLE AS origin_y,
+            ${resX}::DOUBLE AS res_x,
+            ${resY}::DOUBLE AS res_y,
+            '${DEFAULT_WORKSPACE_COORDINATE_FORMAT}'::VARCHAR AS source_crs,
+            '${DEFAULT_WORKSPACE_COORDINATE_FORMAT}'::VARCHAR AS target_crs;
+        `);
+    }
+
+    /**
+     * Derives raster band metadata from the group-by configuration.
      */
     private getRasterBands(params: BuildHeatmapParams): Array<RasterBandMetadata & { jsonPath: string }> {
-        return (params.groupBy ?? []).map((column, index) => {
+        const groupBy = params.groupBy && params.groupBy.length > 0
+            ? params.groupBy
+            : [{ column: '*', aggregateFn: 'count' as const }];
+
+        return groupBy.map((column, index) => {
             const aggregateFn = (column.aggregateFn ?? 'value').toLowerCase();
             const sourceKey = aggregateFn === 'count' || aggregateFn === 'weighted'
                 ? params.tableJoinName

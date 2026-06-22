@@ -37,7 +37,8 @@ import type {
  *
  * For vector layers, `property` is optional and is used to initialize thematic
  * mapping immediately after the layer is created. For raster layers, `property`
- * is required so a numeric value can be extracted from each raster cell.
+ * selects the band array stored on the raster feature properties (for example
+ * `band_1`).
  */
 export interface LoadCollectionConfig {
     /**
@@ -58,7 +59,8 @@ export interface LoadCollectionParams {
      * Source feature collection to load.
      *
      * Raster-derived collections may contain `null` geometries because values
-     * are resolved from raster cell payloads rather than vector geometry.
+     * are provided as flat band arrays on the feature properties rather than as
+     * per-cell vector geometries.
      */
     collection: FeatureCollection<Geometry | null>;
     /**
@@ -81,8 +83,8 @@ export interface LoadCollectionParams {
      * For vector layers, the path is resolved from each feature and is applied
      * immediately as the initial thematic mapping when provided.
      *
-     * For raster layers, the path is resolved from each raster cell object and
-     * is required to populate the raster value texture.
+     * For raster layers, the path is resolved from the feature properties and
+     * must point to a flat band array such as `band_1`.
      */
     property?: string;
 }
@@ -129,8 +131,8 @@ export interface LoadMeshParams {
  * Parameters for updating a raster layer's values.
  *
  * Raster updates replace the value source for an existing raster layer. The
- * `property` accessor is resolved for each raw raster cell payload from
- * `collection.features[0].properties.raster`.
+ * `property` accessor is resolved from `collection.features[0].properties` and
+ * must point to a flat band array such as `band_1`.
  */
 export interface UpdateRasterParams {
     /**
@@ -138,7 +140,7 @@ export interface UpdateRasterParams {
      */
     collection: FeatureCollection<Geometry | null>;
     /**
-     * Dot-path accessor for the numeric value in each raster cell.
+     * Dot-path accessor for the flat raster band array on feature properties.
      */
     property: string;
     /**

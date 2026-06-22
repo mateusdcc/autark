@@ -14,6 +14,7 @@ export class Heatmap {
         await this.db.init();
 
         await this.db.loadOsm({
+            pbfFileUrl: `${URL}data/lower_mnt.osm.pbf`,
             queryArea: {
                 geocodeArea: 'New York',
                 areas: ['Battery Park City', 'Financial District'],
@@ -42,11 +43,11 @@ export class Heatmap {
                 columns: 20,
             },
             groupBy: [
-                    {
-                        column: 'Unique Key',
-                        aggregateFn: 'count'
-                    },
-                ],
+                {
+                    column: 'Unique Key',
+                    aggregateFn: 'count'
+                },
+            ],
         });
 
 
@@ -61,17 +62,14 @@ export class Heatmap {
     }
 
     protected async loadLayers(): Promise<void> {
-        const propertyPath = 'band_1';
-
         for (const layerData of [...this.db.getLayersMetadata(), ...this.db.getRastersMetadata()]) {
-            const geojson = await this.db.getLayer(layerData.name);
+            const geojson = layerData.type === 'raster'
+                ? await this.db.getRaster(layerData.name)
+                : await this.db.getLayer(layerData.name);
 
-            if (layerData.type === 'raster') {
-                this.map.loadCollection(layerData.name, { collection: geojson, type: 'raster', property: propertyPath });
-            }
-            else {
-                this.map.loadCollection(layerData.name, { collection: geojson, type: layerData.type });
-            }
+            const propertyPath = layerData.type === 'raster' ? 'band_1' : undefined;
+
+            this.map.loadCollection(layerData.name, { collection: geojson, type: layerData.type, property: propertyPath });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
 
