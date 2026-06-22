@@ -1,5 +1,4 @@
 import { AutkMap } from '@urban-toolkit/autk-map';
-import { ColorMapDomainStrategy } from '@urban-toolkit/autk-core';
 import { AutkDb } from '@urban-toolkit/autk-db';
 
 export class GeotiffVis {
