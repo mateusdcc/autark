@@ -26,11 +26,11 @@ export class OsmLayersApi {
             },
         });
 
-        // await this.db.loadGeojson({
-        //     geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
-        //     outputTableName: 'lotes',
-        //     layerType: 'buildings'
-        // });
+        await this.db.loadGeojson({
+            geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
+            outputTableName: 'lotes',
+            layerType: 'buildings'
+        });
 
         this.map = new AutkMap(canvas);
 
