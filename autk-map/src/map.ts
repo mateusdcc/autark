@@ -74,6 +74,12 @@ import { SpriteLayer } from './layer-sprite';
 import { PipelineBuildingSSAO } from './pipeline-triangle-ssao';
 
 import { AutkMapUi } from './map-ui';
+import { TerrainRenderer } from './terrain-renderer';
+import type { TerrainDebugOptions } from './terrain-renderer';
+import { terrainSourceFromRaster } from './terrain-source';
+import type { TerrainSource } from './terrain-source';
+
+const clampNumber = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 /**
  * Main map controller for rendering, interaction, and layer lifecycle.
@@ -117,6 +123,14 @@ export class AutkMap {
     protected _isDestroyed: boolean = false;
     /** Set after the first render-loop error to deduplicate repeated frame failures. */
     protected _renderErrorLogged: boolean = false;
+    private _terrainRenderer: TerrainRenderer | null = null;
+    private _terrainSource: TerrainSource | null = null;
+    private readonly _terrainOverlayCamera: Camera = new Camera();
+    private _terrainDebug: Required<TerrainDebugOptions> = {
+        showMesh: false,
+        enableCulling: true,
+        freezeLod: false,
+    };
 
     /**
      * Creates an AutkMap instance bound to a canvas element.
@@ -723,6 +737,61 @@ export class AutkMap {
         layer.clearSkippedIds();
     }
 
+    enableTerrainMode(collection: FeatureCollection<Geometry | null>, property: string): void {
+        if (!this.layerManager.hasOrigin) {
+            throw new Error('Terrain mode requires at least one map layer to initialize the map origin first.');
+        }
+
+        this._terrainSource = terrainSourceFromRaster(collection, property, this.layerManager.origin);
+        this.fitCameraToTerrainBounds(this._terrainSource.bounds);
+        this._renderer.configureOverlayTexture(
+            Math.max(1, this._renderer.pixelWidth),
+            Math.max(1, this._renderer.pixelHeight),
+        );
+        this.rebuildTerrainRenderer();
+    }
+
+    private rebuildTerrainRenderer(): void {
+        if (!this._terrainSource) {
+            return;
+        }
+
+        this._terrainRenderer?.destroy();
+        this._terrainRenderer = new TerrainRenderer(
+            this._renderer.device,
+            this._renderer.canvasFormat,
+            'depth32float',
+            this._renderer.sampleCount,
+            this._terrainSource,
+            this._renderer.overlayTextureView,
+        );
+    }
+
+    private fitCameraToTerrainBounds(bounds: readonly [number, number, number, number]): void {
+        const width = Math.max(bounds[2] - bounds[0], 1);
+        const height = Math.max(bounds[3] - bounds[1], 1);
+        const centerX = (bounds[0] + bounds[2]) * 0.5;
+        const centerY = (bounds[1] + bounds[3]) * 0.5;
+        const aspect = Math.max(this._renderer.pixelWidth / Math.max(this._renderer.pixelHeight, 1), 1e-6);
+        const halfFovTangent = Math.tan(this._camera.getFovyRadians() * 0.5);
+        const distanceForHeight = height / (2 * halfFovTangent);
+        const distanceForWidth = width / (2 * halfFovTangent * aspect);
+        const distance = Math.max(distanceForHeight, distanceForWidth) * 1.08;
+
+        this._camera.resetCamera([0, 1, 0], [centerX, centerY, 0], [centerX, centerY, distance]);
+        this._camera.resize(this._renderer.pixelWidth, this._renderer.pixelHeight);
+    }
+
+    disableTerrainMode(): void {
+        this._terrainRenderer?.destroy();
+        this._terrainRenderer = null;
+        this._terrainSource = null;
+    }
+
+    updateTerrainDebug(options: Partial<typeof this._terrainDebug>): void {
+        this._terrainDebug = { ...this._terrainDebug, ...options };
+    }
+
     /**
      * Starts the continuous render loop at the target frame rate.
      *
@@ -792,6 +861,7 @@ export class AutkMap {
 
         this._ui.destroy();
         this._renderer.destroy();
+        this._terrainRenderer?.destroy();
 
         this._isDestroyed = true;
     }
@@ -862,6 +932,11 @@ export class AutkMap {
 
     private _renderFrame() {
         this._camera.update();
+        if (this._terrainRenderer) {
+            this._renderTerrainFrame();
+            return;
+        }
+
         const activePickingLayer = this.activePickingLayer;
         const pendingPick = activePickingLayer
             && !activePickingLayer.layerRenderInfo.isSkip
@@ -930,6 +1005,169 @@ export class AutkMap {
                 }
             });
         }
+    }
+
+    private _renderTerrainFrame(): void {
+        const terrain = this._terrainRenderer;
+        if (!terrain) {
+            return;
+        }
+
+        this._renderer.start();
+        const overlayResized = this._renderer.configureOverlayTexture(
+            Math.max(1, this._renderer.pixelWidth),
+            Math.max(1, this._renderer.pixelHeight),
+        );
+        if (overlayResized) {
+            this.rebuildTerrainRenderer();
+        }
+        const activeTerrain = this._terrainRenderer;
+        if (!activeTerrain) {
+            return;
+        }
+        const overlayBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
+        this._terrainOverlayCamera.setOrthographicBounds(
+            overlayBounds[0],
+            overlayBounds[2],
+            overlayBounds[1],
+            overlayBounds[3],
+        );
+
+        this._layerManager.layers.forEach((layer) => {
+            if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
+                layer.prepareRender(this._terrainOverlayCamera);
+            }
+        });
+        const overlayPass = this._renderer.beginOverlayRenderPass();
+        this._layerManager.layers.forEach((layer) => {
+            if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
+                layer.renderPass(this._terrainOverlayCamera, overlayPass);
+            }
+        });
+        overlayPass.end();
+
+        activeTerrain.update(this._camera, overlayBounds, this._terrainDebug);
+        const terrainPass = this._renderer.beginMainRenderPass();
+        activeTerrain.render(terrainPass, this._terrainDebug.showMesh);
+        terrainPass.end();
+        this._renderer.finish();
+    }
+
+    private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
+        const points: Array<[number, number]> = [];
+        const eye = this._camera.getEye();
+        const lookAt = this._camera.getLookAt();
+        const forwardX = lookAt[0] - eye[0];
+        const forwardY = lookAt[1] - eye[1];
+        const forwardLength = Math.hypot(forwardX, forwardY);
+        const hasHorizontalForward = forwardLength > 1e-3;
+        const normalizedForward: [number, number] = hasHorizontalForward
+            ? [forwardX / forwardLength, forwardY / forwardLength]
+            : [0, 1];
+        const corners: Array<[number, number]> = [
+            [0, 0],
+            [1, 0],
+            [0, 1],
+            [1, 1],
+            [0.5, 0.5],
+        ];
+
+        for (const [x, y] of corners) {
+            const direction = this._camera.getWorldRayDirection(x, y);
+            if (Math.abs(direction[2]) < 1e-6) {
+                continue;
+            }
+
+            const t = -eye[2] / direction[2];
+            if (t <= 0) {
+                continue;
+            }
+
+            points.push([eye[0] + direction[0] * t, eye[1] + direction[1] * t]);
+        }
+
+        if (points.length === 0) {
+            points.push([lookAt[0], lookAt[1]]);
+        }
+
+        const cameraHeight = Math.max(Math.abs(eye[2]), 1);
+        const terrainWidth = terrainBounds[2] - terrainBounds[0];
+        const terrainHeight = terrainBounds[3] - terrainBounds[1];
+        const terrainMaxSpan = Math.max(terrainWidth, terrainHeight);
+        const visibleDistance = clampNumber(cameraHeight * 6, cameraHeight * 1.5, terrainMaxSpan);
+        const lookAheadDistance = visibleDistance * 0.75;
+        const aspect = Math.max(this._renderer.pixelWidth / Math.max(this._renderer.pixelHeight, 1), 1e-6);
+        if (hasHorizontalForward) {
+            const right: [number, number] = [normalizedForward[1], -normalizedForward[0]];
+            const lateralHalfSpan = Math.min(
+                Math.max(
+                    cameraHeight * Math.tan(this._camera.getFovyRadians() * 0.5) * aspect * 1.25,
+                    visibleDistance * 0.35,
+                ),
+                terrainMaxSpan * 0.5,
+            );
+            const cameraPoint: [number, number] = [eye[0], eye[1]];
+            const lookAheadPoint: [number, number] = [
+                eye[0] + normalizedForward[0] * lookAheadDistance,
+                eye[1] + normalizedForward[1] * lookAheadDistance,
+            ];
+
+            points.push(cameraPoint, lookAheadPoint);
+            for (const point of [cameraPoint, lookAheadPoint]) {
+                points.push(
+                    [point[0] + right[0] * lateralHalfSpan, point[1] + right[1] * lateralHalfSpan],
+                    [point[0] - right[0] * lateralHalfSpan, point[1] - right[1] * lateralHalfSpan],
+                );
+            }
+        }
+
+        const rawMinX = Math.min(...points.map((point) => point[0]));
+        const rawMaxX = Math.max(...points.map((point) => point[0]));
+        const rawMinY = Math.min(...points.map((point) => point[1]));
+        const rawMaxY = Math.max(...points.map((point) => point[1]));
+        let width = Math.max(rawMaxX - rawMinX, 1);
+        let height = Math.max(rawMaxY - rawMinY, 1);
+        const rawCenterX = (rawMinX + rawMaxX) * 0.5;
+        const rawCenterY = (rawMinY + rawMaxY) * 0.5;
+        const focusX = hasHorizontalForward ? eye[0] + normalizedForward[0] * lookAheadDistance * 0.5 : rawCenterX;
+        const focusY = hasHorizontalForward ? eye[1] + normalizedForward[1] * lookAheadDistance * 0.5 : rawCenterY;
+        const maxForwardSpan = Math.min(visibleDistance * 1.5, terrainMaxSpan);
+        const maxLateralSpan = Math.min(visibleDistance * 3.0, terrainMaxSpan);
+        const maxWidth = Math.max(maxLateralSpan, maxForwardSpan * aspect);
+        const maxHeight = Math.max(maxForwardSpan, maxLateralSpan / Math.max(aspect, 1e-6));
+        width = Math.min(width, maxWidth);
+        height = Math.min(height, maxHeight);
+
+        const texelX = width / Math.max(1, this._renderer.pixelWidth);
+        const texelY = height / Math.max(1, this._renderer.pixelHeight);
+        let minX = Math.floor((focusX - width * 0.5) / texelX) * texelX;
+        let minY = Math.floor((focusY - height * 0.5) / texelY) * texelY;
+        let maxX = minX + width;
+        let maxY = minY + height;
+
+        if (minX < terrainBounds[0]) {
+            maxX += terrainBounds[0] - minX;
+            minX = terrainBounds[0];
+        }
+        if (maxX > terrainBounds[2]) {
+            minX -= maxX - terrainBounds[2];
+            maxX = terrainBounds[2];
+        }
+        if (minY < terrainBounds[1]) {
+            maxY += terrainBounds[1] - minY;
+            minY = terrainBounds[1];
+        }
+        if (maxY > terrainBounds[3]) {
+            minY -= maxY - terrainBounds[3];
+            maxY = terrainBounds[3];
+        }
+
+        return [
+            Math.max(minX, terrainBounds[0]),
+            Math.max(minY, terrainBounds[1]),
+            Math.min(maxX, terrainBounds[2]),
+            Math.min(maxY, terrainBounds[3]),
+        ];
     }
 
     /**

@@ -133,6 +133,56 @@ export class Camera {
         return this.mProjectionMatrix;
     }
 
+    public getEye(): [number, number, number] {
+        return [this.wEye[0], this.wEye[1], this.wEye[2]];
+    }
+
+    public getLookAt(): [number, number, number] {
+        return [this.wLookAt[0], this.wLookAt[1], this.wLookAt[2]];
+    }
+
+    public getUp(): [number, number, number] {
+        return [this.wUp[0], this.wUp[1], this.wUp[2]];
+    }
+
+    public getFovyRadians(): number {
+        return this.fovy;
+    }
+
+    public getNear(): number {
+        return this.wNear;
+    }
+
+    public getFar(): number {
+        return this.wFar;
+    }
+
+    public getViewportHeight(): number {
+        return this.viewportHeight;
+    }
+
+    public getViewportWidth(): number {
+        return this.viewportWidth;
+    }
+
+    public getViewProjectionMatrix(): Float32Array {
+        return new Float32Array(mat4.mul(mat4.create(), this.mProjectionMatrix, this.mViewMatrix));
+    }
+
+    public getWorldRayDirection(x: number, y: number): [number, number, number] {
+        const direction = this.screenCoordToWorldDir(x, y);
+        return [direction[0], direction[1], direction[2]];
+    }
+
+    public setOrthographicBounds(left: number, right: number, bottom: number, top: number): void {
+        mat4.identity(this.mViewMatrix);
+        mat4.orthoZO(this.mProjectionMatrix, left, right, bottom, top, 0, -100);
+        this.wEye = vec3.fromValues((left + right) * 0.5, (bottom + top) * 0.5, 100);
+        this.wLookAt = vec3.fromValues((left + right) * 0.5, (bottom + top) * 0.5, 0);
+        this.wUp = vec3.fromValues(0, 1, 0);
+        this.updateEyeDirAndLen();
+    }
+
     /**
      * Returns the current view (model-view) matrix.
      *

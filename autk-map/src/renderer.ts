@@ -81,6 +81,14 @@ export class Renderer {
     protected _pixelHeight: number = 1;
     /** Device pixel ratio used to derive backing-store size. */
     protected _devicePixelRatio: number = 1;
+    private _overlayTexture?: GPUTexture;
+    private _overlayMultisampleTexture?: GPUTexture;
+    private _overlayDepthTexture?: GPUTexture;
+    private _overlayTextureView?: GPUTextureView;
+    private _overlayMultisampleTextureView?: GPUTextureView;
+    private _overlayDepthTextureView?: GPUTextureView;
+    private _overlayWidth = 0;
+    private _overlayHeight = 0;
 
     /**
      * Creates a renderer bound to a canvas.
@@ -174,6 +182,13 @@ export class Renderer {
     /** Picking depth attachment descriptor. */
     get pickingDepthBuffer(): GPURenderPassDepthStencilAttachment {
         return this._pickingDepthBuffer;
+    }
+
+    get overlayTextureView(): GPUTextureView {
+        if (!this._overlayTextureView) {
+            throw new Error('Overlay texture has not been configured.');
+        }
+        return this._overlayTextureView;
     }
 
     /**
@@ -466,6 +481,68 @@ export class Renderer {
         return this.commandEncoder.beginRenderPass(renderPassDesc);
     }
 
+    configureOverlayTexture(width: number, height: number): boolean {
+        if (!this._device || (this._overlayTexture && width === this._overlayWidth && height === this._overlayHeight)) {
+            return false;
+        }
+
+        this._overlayTexture?.destroy();
+        this._overlayMultisampleTexture?.destroy();
+        this._overlayDepthTexture?.destroy();
+        this._overlayWidth = width;
+        this._overlayHeight = height;
+
+        this._overlayTexture = this._device.createTexture({
+            label: 'Terrain overlay texture',
+            size: [width, height],
+            format: this._canvasFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this._overlayMultisampleTexture = this._device.createTexture({
+            label: 'Terrain overlay MSAA texture',
+            size: [width, height],
+            sampleCount: this._sampleCount,
+            format: this._canvasFormat,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this._overlayDepthTexture = this._device.createTexture({
+            label: 'Terrain overlay depth texture',
+            size: [width, height],
+            sampleCount: this._sampleCount,
+            format: 'depth32float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this._overlayTextureView = this._overlayTexture.createView();
+        this._overlayMultisampleTextureView = this._overlayMultisampleTexture.createView();
+        this._overlayDepthTextureView = this._overlayDepthTexture.createView();
+        return true;
+    }
+
+    beginOverlayRenderPass(): GPURenderPassEncoder {
+        if (!this._overlayTextureView || !this._overlayMultisampleTextureView || !this._overlayDepthTextureView) {
+            throw new Error('Renderer overlay pass requested before overlay texture configuration.');
+        }
+
+        return this.commandEncoder.beginRenderPass({
+            label: 'Terrain overlay render pass',
+            colorAttachments: [
+                {
+                    view: this._overlayMultisampleTextureView,
+                    resolveTarget: this._overlayTextureView,
+                    clearValue: { r: 0, g: 0, b: 0, a: 0 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                },
+            ],
+            depthStencilAttachment: {
+                view: this._overlayDepthTextureView,
+                depthClearValue: 0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
+    }
+
     /**
      * Submits the current command buffer and clears the active encoder.
      *
@@ -616,6 +693,9 @@ export class Renderer {
         this._depthTexture?.destroy();
         this._pickingTexture?.destroy();
         this._pickingDepthTexture?.destroy();
+        this._overlayTexture?.destroy();
+        this._overlayMultisampleTexture?.destroy();
+        this._overlayDepthTexture?.destroy();
         this._pickReadbackBuffers.forEach((slot) => slot.buffer?.destroy());
         this._context?.unconfigure();
 
