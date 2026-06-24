@@ -1,0 +1,41 @@
+{
+  "format": "autark-loadable-geotiff-height-raster-v1",
+  "source": "Mapzen Terrarium elevation tiles",
+  "sourceUrlTemplate": "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+  "output": {
+    "geotiff": "C:\\work\\code\\vis\\urbane\\lod-terrain\\autk-terrain\\output\\niteroi-elevation.tif",
+    "coordinateFormat": "EPSG:3395",
+    "autarkBand": "band_1",
+    "autarkValue": "elevation_m"
+  },
+  "zoom": 14,
+  "width": 756,
+  "height": 872,
+  "requestedBounds": {
+    "west": -43.1369899,
+    "south": -22.9452715,
+    "east": -43.0722041,
+    "north": -22.876389
+  },
+  "pixelAlignedBounds": {
+    "west": -43.13704490661621,
+    "south": -22.945273386846043,
+    "east": -43.07215690612793,
+    "north": -22.87633335267847
+  },
+  "pixelAlignedMercatorBounds": {
+    "west": -4801993.873331092,
+    "south": -2625401.7197680213,
+    "east": -4794770.574158143,
+    "north": -2617070.083684936
+  },
+  "pixelAlignedWorldMercatorBounds": {
+    "west": -4801993.873331091,
+    "south": -2608750.3097562776,
+    "east": -4794770.574158142,
+    "north": -2600466.043994018
+  },
+  "clampMin": 0,
+  "minHeight": 0,
+  "maxHeight": 339.4056396484375
+}
