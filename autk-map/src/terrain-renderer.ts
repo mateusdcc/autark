@@ -52,6 +52,7 @@ export class TerrainRenderer {
     private readonly bindGroup: GPUBindGroup;
     private readonly instanceBuffer: GPUBuffer;
     private readonly heightTexture: GPUTexture;
+    private readonly heightTextureView: GPUTextureView;
     private readonly mesh: TerrainMesh;
     private readonly instanceData = new Float32Array(MAX_INSTANCES * 8);
     private readonly lastBlocks: BlockCandidate[] = [];
@@ -83,6 +84,7 @@ export class TerrainRenderer {
             format: 'r32float',
             usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
         });
+        this.heightTextureView = this.heightTexture.createView();
         device.queue.writeTexture(
             { texture: this.heightTexture },
             source.data,
@@ -111,7 +113,7 @@ export class TerrainRenderer {
             layout: bindGroupLayout,
             entries: [
                 { binding: 0, resource: { buffer: this.cameraBuffer } },
-                { binding: 1, resource: this.heightTexture.createView() },
+                { binding: 1, resource: this.heightTextureView },
                 { binding: 2, resource: overlaySampler },
                 { binding: 3, resource: overlayTextureView },
             ],
@@ -154,6 +156,14 @@ export class TerrainRenderer {
             depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
         });
+    }
+
+    get terrainSource(): TerrainSource {
+        return this.source;
+    }
+
+    get terrainHeightTextureView(): GPUTextureView {
+        return this.heightTextureView;
     }
 
     update(

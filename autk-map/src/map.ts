@@ -1050,6 +1050,28 @@ export class AutkMap {
         const terrainPass = this._renderer.beginMainRenderPass();
         activeTerrain.render(terrainPass, this._terrainDebug.showMesh);
         terrainPass.end();
+
+        const visible3DLayers = this._layerManager.layers.filter(
+            (layer): layer is Triangles3DLayer => !layer.layerRenderInfo.isSkip && layer instanceof Triangles3DLayer
+        );
+        if (visible3DLayers.length > 0) {
+            const terrainSource = activeTerrain.terrainSource;
+            const terrainHeightView = activeTerrain.terrainHeightTextureView;
+            const geometryPassEncoder = PipelineBuildingSSAO.beginSharedGeometryPass(this._renderer);
+            visible3DLayers.forEach((layer) => {
+                layer.setTerrainHeightSource(terrainSource, terrainHeightView);
+                layer.renderSceneGeometry(this._camera, geometryPassEncoder);
+            });
+            geometryPassEncoder.end();
+
+            const buildingCompositePass = this._renderer.beginMainColorRenderPass('load');
+            PipelineBuildingSSAO.compositeSharedPassWithTerrainDepth(
+                this._renderer,
+                buildingCompositePass,
+                this._renderer.depthTextureView,
+            );
+            buildingCompositePass.end();
+        }
         this._renderer.finish();
     }
 

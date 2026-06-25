@@ -17,12 +17,14 @@ import buildingsFS01 from './shaders/buildings-01.frag.wgsl';
 
 import buildingsVS02 from './shaders/buildings-02.vert.wgsl';
 import buildingsFS02 from './shaders/buildings-02.frag.wgsl';
+import buildingsTerrainFS02 from './shaders/buildings-02-terrain.frag.wgsl';
 
 import { Camera } from '@urban-toolkit/autk-core';
 import { Renderer } from './renderer';
 
 import { Pipeline } from './pipeline';
 import { Triangles3DLayer } from './layer-triangles3D';
+import type { TerrainSource } from './terrain-source';
 
 type SharedSsaoState = {
     colorsSharedBuffer: GPURenderPassColorAttachment;
@@ -31,9 +33,12 @@ type SharedSsaoState = {
     colorsSharedTexture: GPUTexture;
     normalsSharedTexture: GPUTexture;
     depthTexturePass01: GPUTexture;
+    texSampler: GPUSampler;
     texturesPass02BindGroup: GPUBindGroup;
     texturesPass02BindGroupLayout: GPUBindGroupLayout;
     pipeline02: GPURenderPipeline;
+    terrainCompositeBindGroupLayout: GPUBindGroupLayout;
+    terrainCompositePipeline: GPURenderPipeline;
     width: number;
     height: number;
 };
@@ -91,6 +96,11 @@ export class PipelineBuildingSSAO extends Pipeline {
     private _skippedData: Float32Array<ArrayBuffer> | null = null;
     /** Reused CPU-side upload buffer for triangle indices. */
     private _indicesData: Uint32Array<ArrayBuffer> | null = null;
+    private _terrainUniformBuffer!: GPUBuffer;
+    private _terrainBindGroupLayout!: GPUBindGroupLayout;
+    private _terrainBindGroup!: GPUBindGroup;
+    private _dummyTerrainTexture!: GPUTexture;
+    private _terrainUniformData = new Float32Array(8);
 
     /**
      * Creates a building SSAO pipeline bound to a renderer.
@@ -121,6 +131,8 @@ export class PipelineBuildingSSAO extends Pipeline {
         this._highlightedBuffer?.destroy();
         this._skippedBuffer?.destroy();
         this._indicesBuffer?.destroy();
+        this._terrainUniformBuffer?.destroy();
+        this._dummyTerrainTexture?.destroy();
         super.destroy();
     }
 
@@ -164,6 +176,26 @@ export class PipelineBuildingSSAO extends Pipeline {
         passEncoder.draw(6);
     }
 
+    static compositeSharedPassWithTerrainDepth(
+        renderer: Renderer,
+        passEncoder: GPURenderPassEncoder,
+        terrainDepthTextureView: GPUTextureView,
+    ): void {
+        const shared = this._ensureSharedState(renderer);
+        const bindGroup = renderer.device.createBindGroup({
+            layout: shared.terrainCompositeBindGroupLayout,
+            entries: [
+                { binding: 0, resource: shared.texSampler },
+                { binding: 1, resource: shared.colorsSharedBuffer.view },
+                { binding: 2, resource: shared.normalsSharedBuffer.view },
+                { binding: 3, resource: terrainDepthTextureView },
+            ],
+        });
+        passEncoder.setPipeline(shared.terrainCompositePipeline);
+        passEncoder.setBindGroup(0, bindGroup);
+        passEncoder.draw(6);
+    }
+
     /**
      * Builds the SSAO geometry and shared composite resources for a mesh.
      *
@@ -180,6 +212,7 @@ export class PipelineBuildingSSAO extends Pipeline {
         this.createVertexBuffers(mesh);
         this.createColorUniformBindGroup();
         this.createCameraUniformBindGroup();
+        this.createTerrainHeightBindGroup();
         this.updateVertexBuffers(mesh);
         this.updateColorUniforms(mesh);
         this.createPipeline01();
@@ -251,6 +284,65 @@ export class PipelineBuildingSSAO extends Pipeline {
             size: mesh.indices.length * 4,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
         });
+    }
+
+    createTerrainHeightBindGroup(): void {
+        this._terrainUniformBuffer = this._renderer.device.createBuffer({
+            label: 'Building terrain height uniform',
+            size: 8 * Float32Array.BYTES_PER_ELEMENT,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this._dummyTerrainTexture = this._renderer.device.createTexture({
+            label: 'Building dummy terrain height texture',
+            size: [2, 2],
+            format: 'r32float',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+        this._terrainBindGroupLayout = this._renderer.device.createBindGroupLayout({
+            label: 'Building terrain height bind group layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                { binding: 1, visibility: GPUShaderStage.VERTEX, texture: { sampleType: 'unfilterable-float' } },
+            ],
+        });
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Building terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: this._dummyTerrainTexture.createView() },
+            ],
+        });
+        this.clearTerrainHeightSource();
+    }
+
+    setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
+        this._terrainUniformData.set([
+            source.originX,
+            source.originY,
+            source.cellSizeX,
+            source.cellSizeY,
+            source.width,
+            source.height,
+            1,
+            0,
+        ]);
+        this._renderer.device.queue.writeBuffer(this._terrainUniformBuffer, 0, this._terrainUniformData);
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Building terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: heightTextureView },
+            ],
+        });
+    }
+
+    clearTerrainHeightSource(): void {
+        this._terrainUniformData.fill(0);
+        this._terrainUniformData[4] = 2;
+        this._terrainUniformData[5] = 2;
+        this._renderer.device.queue.writeBuffer(this._terrainUniformBuffer, 0, this._terrainUniformData);
     }
 
     /**
@@ -326,7 +418,7 @@ export class PipelineBuildingSSAO extends Pipeline {
             format: 'depth32float',
         };
         const layout = this._renderer.device.createPipelineLayout({
-            bindGroupLayouts: [this._renderInfoBindGroupLayout, this._cameraBindGroupLayout],
+            bindGroupLayouts: [this._renderInfoBindGroupLayout, this._cameraBindGroupLayout, this._terrainBindGroupLayout],
         });
 
         this._pipeline01 = this._renderer.device.createRenderPipeline({
@@ -362,6 +454,7 @@ export class PipelineBuildingSSAO extends Pipeline {
         passEncoder.setIndexBuffer(this._indicesBuffer, 'uint32');
         passEncoder.setBindGroup(0, this._renderInfoBindGroup);
         passEncoder.setBindGroup(1, this._cameraBindGroup);
+        passEncoder.setBindGroup(2, this._terrainBindGroup);
 
         const indexCount = this._indicesBuffer.size / Uint32Array.BYTES_PER_ELEMENT;
         if (indexCount > 0) {
@@ -464,6 +557,14 @@ export class PipelineBuildingSSAO extends Pipeline {
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
             ],
         });
+        const terrainCompositeBindGroupLayout = renderer.device.createBindGroupLayout({
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+                { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d', multisampled: true } },
+            ],
+        });
         const texturesPass02BindGroup = renderer.device.createBindGroup({
             layout: texturesPass02BindGroupLayout,
             entries: [
@@ -480,6 +581,10 @@ export class PipelineBuildingSSAO extends Pipeline {
         const fragModule02 = renderer.device.createShaderModule({
             label: 'Buildings ssao: fragment shader pass 02',
             code: buildingsFS02,
+        });
+        const terrainFragModule02 = renderer.device.createShaderModule({
+            label: 'Buildings ssao: terrain-aware fragment shader pass 02',
+            code: buildingsTerrainFS02,
         });
         const pipeline02 = renderer.device.createRenderPipeline({
             layout: renderer.device.createPipelineLayout({
@@ -514,6 +619,34 @@ export class PipelineBuildingSSAO extends Pipeline {
             },
             label: 'Pipeline triangle ssao 02 shared',
         });
+        const terrainCompositePipeline = renderer.device.createRenderPipeline({
+            layout: renderer.device.createPipelineLayout({
+                bindGroupLayouts: [terrainCompositeBindGroupLayout],
+            }),
+            vertex: {
+                module: vertModule02,
+                entryPoint: 'main',
+            },
+            fragment: {
+                module: terrainFragModule02,
+                entryPoint: 'main',
+                targets: [{
+                    format: renderer.canvasFormat,
+                    blend: {
+                        color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                        alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+                    },
+                }],
+            },
+            primitive: {
+                topology: 'triangle-strip',
+                stripIndexFormat: 'uint32',
+            },
+            multisample: {
+                count: renderer.sampleCount,
+            },
+            label: 'Pipeline triangle ssao 02 terrain shared',
+        });
 
         const state: SharedSsaoState = {
             colorsSharedBuffer,
@@ -522,9 +655,12 @@ export class PipelineBuildingSSAO extends Pipeline {
             colorsSharedTexture,
             normalsSharedTexture,
             depthTexturePass01,
+            texSampler,
             texturesPass02BindGroup,
             texturesPass02BindGroupLayout,
             pipeline02,
+            terrainCompositeBindGroupLayout,
+            terrainCompositePipeline,
             width,
             height,
         };

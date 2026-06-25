@@ -184,6 +184,10 @@ export class Renderer {
         return this._pickingDepthBuffer;
     }
 
+    get depthTextureView(): GPUTextureView {
+        return this._depthBuffer.view as GPUTextureView;
+    }
+
     get overlayTextureView(): GPUTextureView {
         if (!this._overlayTextureView) {
             throw new Error('Overlay texture has not been configured.');
@@ -289,7 +293,7 @@ export class Renderer {
             const canvasConfig: GPUCanvasConfiguration = {
                 device: this._device,
                 format: this._canvasFormat,
-                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+                usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
                 alphaMode: 'premultiplied',
             };
             this._context.configure(canvasConfig);
@@ -313,7 +317,7 @@ export class Renderer {
         const desc: GPUTextureDescriptor = {
             size: [this._pixelWidth, this._pixelHeight],
             format: 'rgba8unorm',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
             sampleCount: this._pickingSampleCount,
         };
 
@@ -407,7 +411,7 @@ export class Renderer {
             sampleCount: this._sampleCount,
             dimension: '2d',
             format: 'depth32float',
-            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
         };
 
         this._depthTexture = this._device.createTexture(depthTextureDesc);
@@ -479,6 +483,19 @@ export class Renderer {
         };
 
         return this.commandEncoder.beginRenderPass(renderPassDesc);
+    }
+
+    beginMainColorRenderPass(loadOp: GPULoadOp = 'load'): GPURenderPassEncoder {
+        if (!this._isInitialized || !this._context) {
+            throw new Error('Renderer color pass requested before initialization.');
+        }
+
+        this._frameBuffer.loadOp = loadOp;
+        this._frameBuffer.resolveTarget = this._context.getCurrentTexture().createView();
+
+        return this.commandEncoder.beginRenderPass({
+            colorAttachments: [this._frameBuffer],
+        });
     }
 
     configureOverlayTexture(width: number, height: number): boolean {

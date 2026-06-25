@@ -23,6 +23,7 @@ import { Renderer } from './renderer';
 
 import { PipelineBuildingSSAO } from './pipeline-triangle-ssao';
 import { PipelineTrianglePicking } from './pipeline-triangle-picking';
+import type { TerrainSource } from './terrain-source';
 
 /**
  * 3D indexed-triangle layer with derived lighting normals.
@@ -183,6 +184,14 @@ export class Triangles3DLayer extends VectorLayer {
 
         this._pipeline.updateZIndex(this._layerInfo.zIndex);
         (this._pipeline as PipelineBuildingSSAO).renderGeometryPass(camera, passEncoder);
+    }
+
+    setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
+        (this._pipeline as PipelineBuildingSSAO).setTerrainHeightSource(source, heightTextureView);
+    }
+
+    clearTerrainHeightSource(): void {
+        (this._pipeline as PipelineBuildingSSAO).clearTerrainHeightSource();
     }
 
     /**

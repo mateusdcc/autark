@@ -25,7 +25,7 @@ export class TerrainLayersNiteroi {
                     'parks',
                     'water',
                     'roads'
-                ],
+                ] as Array<'surface' | 'parks' | 'water' | 'roads' | 'buildings'>,
             },
         });
 
@@ -33,6 +33,12 @@ export class TerrainLayersNiteroi {
             geotiffFileUrl: `${URL}data/niteroi-elevation.tif`,
             coordinateFormat: 'EPSG:3395',
             outputTableName: ELEVATION_LAYER_ID,
+        });
+
+        await this.db.loadGeojson({
+            geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
+            outputTableName: 'lotes',
+            layerType: 'buildings',
         });
 
         console.log(`Loaded GeoTIFF table: ${ELEVATION_LAYER_ID}`);
@@ -50,7 +56,11 @@ export class TerrainLayersNiteroi {
     protected async loadLayers(): Promise<void> {
         for (const layerData of this.db.getLayersMetadata()) {
             const geojson = await this.db.getLayer(layerData.name);
-            this.map.loadCollection(layerData.name, { collection: geojson, type: layerData.type });
+            this.map.loadCollection(layerData.name, {
+                collection: geojson,
+                type: layerData.type,
+                loadConfig: { buildingsZeroHeight: true },
+            });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
         const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
