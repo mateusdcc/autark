@@ -39,7 +39,7 @@ export class TerrainLayersNiteroi {
 
         await this.db.loadGeojson({
             geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
-            outputTableName: 'lotes',
+            outputTableName: 'lots',
             layerType: 'buildings',
         });
 
@@ -50,11 +50,11 @@ export class TerrainLayersNiteroi {
         this.map.updateRenderInfo(ELEVATION_LAYER_ID, { isColorMap: true, opacity: 0.55 });
         const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
         this.map.enableTerrainMode(elevation, 'band_1');
-        this.map.updateTerrainDebug({
-            showMesh: true,
-            enableCulling: true,
-            freezeLod: false,
-        });
+        // this.map.updateTerrainDebug({
+        //     showMesh: true,
+        //     enableCulling: true,
+        //     freezeLod: false,
+        // });
         this.map.draw();
     }
 

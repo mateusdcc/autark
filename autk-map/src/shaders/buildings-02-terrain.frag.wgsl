@@ -18,17 +18,13 @@ fn terrainDepthAt(uv: vec2<f32>) -> f32 {
 fn main(@location(0) uvs : vec2<f32>) -> @location(0) vec4f {
     var fuvs = vec2f(uvs.x, 1.0 - uvs.y);
 
-    var n0tex = textureSample(normalTex, texSampler, fuvs);
-    if (n0tex.a <= 0.0005) {
-        return vec4<f32>(0.0);
-    }
-
+    let n0tex = textureSample(normalTex, texSampler, fuvs);
+    let color = textureSample(colorTex, texSampler, fuvs);
     let terrainDepth = terrainDepthAt(fuvs);
-    if (terrainDepth > n0tex.a + 0.002) {
-        return vec4<f32>(0.0);
-    }
+    let visible = n0tex.a > 0.0005 && terrainDepth <= n0tex.a + 0.002;
+    let visibleFactor = select(0.0, 1.0, visible);
 
-    var n0 = normalize(n0tex.xyz * 2.0 - 1.0);
+    let n0 = normalize(n0tex.xyz * 2.0 - 1.0);
     let num = 32;
     var sss = 0.0;
     for(var i: i32 = 0; i < num; i = i + 1)
@@ -52,8 +48,7 @@ fn main(@location(0) uvs : vec2<f32>) -> @location(0) vec4f {
 
     let fr = 1.0 / f32(num);
     let cc = clamp( (sss * fr), 0.40, 1.0);
-    let color = textureSample(colorTex, texSampler, fuvs);
     var result = cc * color.rgb;
 
-    return vec4<f32>(result * color.a, color.a);
+    return vec4<f32>(result * color.a * visibleFactor, color.a * visibleFactor);
 }

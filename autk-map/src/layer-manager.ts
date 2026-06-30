@@ -155,7 +155,7 @@ export class LayerManager {
      * place.
      */
     private _recomputeZIndices(): void {
-        const buildingsZ = OSM_BASE_LAYER_ORDER.length + this._dynamicOrder.length;
+        const buildingsZ = 0; // OSM_BASE_LAYER_ORDER.length + this._dynamicOrder.length;
 
         for (const layer of this._layers) {
             const { typeLayer, id } = layer.layerInfo;

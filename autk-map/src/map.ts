@@ -127,7 +127,7 @@ export class AutkMap {
     private _terrainSource: TerrainSource | null = null;
     private _frozenTerrainOverlayBounds: [number, number, number, number] | null = null;
     private _frozenTerrainCameraPosition: [number, number] | null = null;
-    private _lastTerrainBoundsLogTime = 0;
+    // private _lastTerrainBoundsLogTime = 0;
     private readonly _terrainOverlayCamera: Camera = new Camera();
     private _terrainDebug: Required<TerrainDebugOptions> = {
         showMesh: false,
@@ -1148,33 +1148,33 @@ export class AutkMap {
         activeTerrain.resolveVisibleBoundsReadback();
     }
 
-    private logTerrainOverlayBounds(params: {
-        fallbackBounds: readonly [number, number, number, number];
-        reducedBounds: readonly [number, number, number, number] | null;
-        overlayBounds: readonly [number, number, number, number];
-        overlayPixelRect: { x: number; y: number; width: number; height: number };
-        overlayUvRect: readonly [number, number, number, number];
-        usingReduced: boolean;
-    }): void {
-        const now = performance.now();
-        if (now - this._lastTerrainBoundsLogTime < 1000) {
-            return;
-        }
+    // private logTerrainOverlayBounds(params: {
+    //     fallbackBounds: readonly [number, number, number, number];
+    //     reducedBounds: readonly [number, number, number, number] | null;
+    //     overlayBounds: readonly [number, number, number, number];
+    //     overlayPixelRect: { x: number; y: number; width: number; height: number };
+    //     overlayUvRect: readonly [number, number, number, number];
+    //     usingReduced: boolean;
+    // }): void {
+    //     const now = performance.now();
+    //     if (now - this._lastTerrainBoundsLogTime < 1000) {
+    //         return;
+    //     }
 
-        this._lastTerrainBoundsLogTime = now;
-        console.log('Terrain overlay bounds', {
-            theoreticalBounds: Array.from(params.fallbackBounds),
-            fallbackBounds: Array.from(params.fallbackBounds),
-            reducedBounds: params.reducedBounds ? Array.from(params.reducedBounds) : null,
-            overlayBounds: Array.from(params.overlayBounds),
-            overlayPixelRect: params.overlayPixelRect,
-            overlayUvRect: Array.from(params.overlayUvRect),
-            usingReduced: params.usingReduced,
-            boundsSource: params.usingReduced ? 'gpu-reduced' : 'theoretical-fallback',
-            cameraEye: this._camera.getEye(),
-            cameraLookAt: this._camera.getLookAt(),
-        });
-    }
+    //     this._lastTerrainBoundsLogTime = now;
+    //     console.log('Terrain overlay bounds', {
+    //         theoreticalBounds: Array.from(params.fallbackBounds),
+    //         fallbackBounds: Array.from(params.fallbackBounds),
+    //         reducedBounds: params.reducedBounds ? Array.from(params.reducedBounds) : null,
+    //         overlayBounds: Array.from(params.overlayBounds),
+    //         overlayPixelRect: params.overlayPixelRect,
+    //         overlayUvRect: Array.from(params.overlayUvRect),
+    //         usingReduced: params.usingReduced,
+    //         boundsSource: params.usingReduced ? 'gpu-reduced' : 'theoretical-fallback',
+    //         cameraEye: this._camera.getEye(),
+    //         cameraLookAt: this._camera.getLookAt(),
+    //     });
+    // }
 
     private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
         const points: Array<[number, number]> = [];

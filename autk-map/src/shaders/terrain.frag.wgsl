@@ -24,14 +24,9 @@ fn insideUnit(uv: vec2<f32>) -> bool {
   return uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0;
 }
 
-fn overlayColor(xy: vec2<f32>) -> vec4<f32> {
+fn overlayUv(xy: vec2<f32>) -> vec2<f32> {
   let uv = (xy - camera.overlayBounds.xy) / camera.overlayBounds.zw;
-  if (!insideUnit(uv)) {
-    return vec4<f32>(0.0);
-  }
-
-  let atlasUv = camera.overlayUvRect.xy + vec2<f32>(uv.x, 1.0 - uv.y) * camera.overlayUvRect.zw;
-  return textureSample(overlayTexture, overlaySampler, atlasUv);
+  return camera.overlayUvRect.xy + vec2<f32>(uv.x, 1.0 - uv.y) * camera.overlayUvRect.zw;
 }
 
 fn inOverlayBounds(xy: vec2<f32>) -> bool {
@@ -53,12 +48,8 @@ fn lodDebugColor(level: f32) -> vec3<f32> {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  if (!inOverlayBounds(input.worldPosition.xy)) {
-    discard;
-  }
-
-  let overlay = overlayColor(input.worldPosition.xy);
-  if (overlay.a <= 0.001) {
+  let overlay = textureSample(overlayTexture, overlaySampler, overlayUv(input.worldPosition.xy));
+  if (!inOverlayBounds(input.worldPosition.xy) || overlay.a <= 0.001) {
     discard;
   }
 
