@@ -127,6 +127,7 @@ export class AutkMap {
     private _terrainSource: TerrainSource | null = null;
     private _frozenTerrainOverlayBounds: [number, number, number, number] | null = null;
     private _frozenTerrainCameraPosition: [number, number] | null = null;
+    private _lastTerrainBoundsLogTime = 0;
     private readonly _terrainOverlayCamera: Camera = new Camera();
     private _terrainDebug: Required<TerrainDebugOptions> = {
         showMesh: false,
@@ -1062,7 +1063,12 @@ export class AutkMap {
         if (!activeTerrain) {
             return;
         }
-        const overlayBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
+        const fallbackBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
+        activeTerrain.update(this._camera, fallbackBounds, [0, 0, 1, 1], this._terrainDebug);
+        const reducedBounds = activeTerrain.visibleBounds;
+        const overlayBounds = reducedBounds && this.isUsableTerrainOverlayBounds(reducedBounds, fallbackBounds, activeTerrain.bounds)
+            ? reducedBounds
+            : fallbackBounds;
         const overlayPixelRect = this.computeTerrainOverlayPixelRect(overlayBounds);
         const overlayUvRect: [number, number, number, number] = [
             overlayPixelRect.x / this._renderer.overlayWidth,
@@ -1070,6 +1076,19 @@ export class AutkMap {
             overlayPixelRect.width / this._renderer.overlayWidth,
             overlayPixelRect.height / this._renderer.overlayHeight,
         ];
+        // this.logTerrainOverlayBounds({
+        //     fallbackBounds,
+        //     reducedBounds,
+        //     overlayBounds,
+        //     overlayPixelRect,
+        //     overlayUvRect,
+        //     usingReduced: overlayBounds === reducedBounds,
+        // });
+        try {
+            activeTerrain.encodeVisibleBoundsReduction(this._renderer.commandEncoder);
+        } catch (error) {
+            console.warn('Terrain visible bounds prepass failed; using fallback bounds:', error);
+        }
         this._terrainOverlayCamera.setOrthographicBounds(
             overlayBounds[0],
             overlayBounds[2],
@@ -1126,6 +1145,35 @@ export class AutkMap {
             buildingCompositePass.end();
         }
         this._renderer.finish();
+        activeTerrain.resolveVisibleBoundsReadback();
+    }
+
+    private logTerrainOverlayBounds(params: {
+        fallbackBounds: readonly [number, number, number, number];
+        reducedBounds: readonly [number, number, number, number] | null;
+        overlayBounds: readonly [number, number, number, number];
+        overlayPixelRect: { x: number; y: number; width: number; height: number };
+        overlayUvRect: readonly [number, number, number, number];
+        usingReduced: boolean;
+    }): void {
+        const now = performance.now();
+        if (now - this._lastTerrainBoundsLogTime < 1000) {
+            return;
+        }
+
+        this._lastTerrainBoundsLogTime = now;
+        console.log('Terrain overlay bounds', {
+            theoreticalBounds: Array.from(params.fallbackBounds),
+            fallbackBounds: Array.from(params.fallbackBounds),
+            reducedBounds: params.reducedBounds ? Array.from(params.reducedBounds) : null,
+            overlayBounds: Array.from(params.overlayBounds),
+            overlayPixelRect: params.overlayPixelRect,
+            overlayUvRect: Array.from(params.overlayUvRect),
+            usingReduced: params.usingReduced,
+            boundsSource: params.usingReduced ? 'gpu-reduced' : 'theoretical-fallback',
+            cameraEye: this._camera.getEye(),
+            cameraLookAt: this._camera.getLookAt(),
+        });
     }
 
     private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
@@ -1197,6 +1245,33 @@ export class AutkMap {
             width,
             height,
         };
+    }
+
+    private isUsableTerrainOverlayBounds(
+        bounds: readonly [number, number, number, number],
+        fallbackBounds: readonly [number, number, number, number],
+        terrainBounds: readonly [number, number, number, number],
+    ): boolean {
+        if (!bounds.every(Number.isFinite)) {
+            return false;
+        }
+
+        const width = bounds[2] - bounds[0];
+        const height = bounds[3] - bounds[1];
+        if (width <= 1 || height <= 1) {
+            return false;
+        }
+
+        const terrainOverlap = bounds[0] < terrainBounds[2]
+            && bounds[2] > terrainBounds[0]
+            && bounds[1] < terrainBounds[3]
+            && bounds[3] > terrainBounds[1];
+        const fallbackOverlap = bounds[0] < fallbackBounds[2]
+            && bounds[2] > fallbackBounds[0]
+            && bounds[1] < fallbackBounds[3]
+            && bounds[3] > fallbackBounds[1];
+
+        return terrainOverlap && fallbackOverlap;
     }
 
     /**

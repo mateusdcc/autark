@@ -37,11 +37,11 @@ export class TerrainLayersNiteroi {
 
         console.log(`Loaded GeoTIFF table: ${ELEVATION_LAYER_ID}`);
 
-        // await this.db.loadGeojson({
-        //     geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
-        //     outputTableName: 'lotes',
-        //     layerType: 'buildings',
-        // });
+        await this.db.loadGeojson({
+            geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
+            outputTableName: 'lotes',
+            layerType: 'buildings',
+        });
 
         this.map = new AutkMap(canvas);
 
@@ -50,6 +50,11 @@ export class TerrainLayersNiteroi {
         this.map.updateRenderInfo(ELEVATION_LAYER_ID, { isColorMap: true, opacity: 0.55 });
         const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
         this.map.enableTerrainMode(elevation, 'band_1');
+        this.map.updateTerrainDebug({
+            showMesh: true,
+            enableCulling: true,
+            freezeLod: false,
+        });
         this.map.draw();
     }
 

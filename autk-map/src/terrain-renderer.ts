@@ -1,5 +1,7 @@
 import type { Camera } from '@urban-toolkit/autk-core';
-import { terrainShader } from './terrain-shader';
+import terrainFragmentSource from './shaders/terrain.frag.wgsl';
+import terrainVertexSource from './shaders/terrain.vert.wgsl';
+import terrainBoundsReduceSource from './shaders/terrain-bounds-reduce.comp.wgsl';
 import type { TerrainSource } from './terrain-source';
 
 const PATCH_CELLS = 32;
@@ -8,6 +10,12 @@ const MAX_LOD_LEVEL = 7;
 const MAX_INSTANCES = 4096;
 const TARGET_CELL_PIXELS = 30;
 const TERRAIN_LOD_REFERENCE_HEIGHT = 0;
+const BOUNDS_PREPASS_SIZE = 512;
+const REDUCE_WORKGROUP_SIZE = 256;
+const BOUNDS_PIXEL_COUNT = BOUNDS_PREPASS_SIZE * BOUNDS_PREPASS_SIZE;
+const BOUNDS_PASS_1_COUNT = Math.ceil(BOUNDS_PIXEL_COUNT / REDUCE_WORKGROUP_SIZE);
+const BOUNDS_PASS_2_COUNT = Math.ceil(BOUNDS_PASS_1_COUNT / REDUCE_WORKGROUP_SIZE);
+const BOUNDS_PASS_3_COUNT = Math.ceil(BOUNDS_PASS_2_COUNT / REDUCE_WORKGROUP_SIZE);
 
 type Plane = [number, number, number, number];
 
@@ -49,15 +57,35 @@ export class TerrainRenderer {
     private readonly pipeline: GPURenderPipeline;
     private readonly meshPipeline: GPURenderPipeline;
     private readonly boundsPipeline: GPURenderPipeline;
+    private readonly visibleBoundsPipeline: GPURenderPipeline;
+    private readonly reduceTexturePipeline: GPUComputePipeline;
+    private readonly reduceBufferPipeline: GPUComputePipeline;
     private readonly cameraBuffer: GPUBuffer;
     private readonly bindGroup: GPUBindGroup;
     private readonly instanceBuffer: GPUBuffer;
     private readonly boundsVertexBuffer: GPUBuffer;
     private readonly heightTexture: GPUTexture;
     private readonly heightTextureView: GPUTextureView;
+    private readonly visibleBoundsTexture: GPUTexture;
+    private readonly visibleBoundsDepthTexture: GPUTexture;
+    private readonly visibleBoundsTextureView: GPUTextureView;
+    private readonly visibleBoundsDepthTextureView: GPUTextureView;
+    private readonly reduceParamsTextureBuffer: GPUBuffer;
+    private readonly reduceParamsPass2Buffer: GPUBuffer;
+    private readonly reduceParamsPass3Buffer: GPUBuffer;
+    private readonly reducePartialA: GPUBuffer;
+    private readonly reducePartialB: GPUBuffer;
+    private readonly reduceFinal: GPUBuffer;
+    private readonly reduceReadback: GPUBuffer;
+    private readonly reduceTextureBindGroup: GPUBindGroup;
+    private readonly reducePass2BindGroup: GPUBindGroup;
+    private readonly reducePass3BindGroup: GPUBindGroup;
     private readonly mesh: TerrainMesh;
     private readonly instanceData = new Float32Array(MAX_INSTANCES * 8);
     private readonly lastBlocks: BlockCandidate[] = [];
+    private latestReducedBounds: [number, number, number, number] | null = null;
+    private boundsReadbackPending = false;
+    private boundsReadbackInFlight = false;
     private instanceCount = 0;
 
     constructor(
@@ -98,6 +126,31 @@ export class TerrainRenderer {
             { bytesPerRow: source.width * Float32Array.BYTES_PER_ELEMENT, rowsPerImage: source.height },
             { width: source.width, height: source.height },
         );
+        this.visibleBoundsTexture = device.createTexture({
+            label: 'Terrain visible bounds prepass texture',
+            size: [BOUNDS_PREPASS_SIZE, BOUNDS_PREPASS_SIZE],
+            format: 'rgba16float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.visibleBoundsDepthTexture = device.createTexture({
+            label: 'Terrain visible bounds prepass depth texture',
+            size: [BOUNDS_PREPASS_SIZE, BOUNDS_PREPASS_SIZE],
+            format: 'depth32float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
+        this.visibleBoundsTextureView = this.visibleBoundsTexture.createView();
+        this.visibleBoundsDepthTextureView = this.visibleBoundsDepthTexture.createView();
+        this.reduceParamsTextureBuffer = createReduceParamsBuffer(device, BOUNDS_PIXEL_COUNT, BOUNDS_PREPASS_SIZE, BOUNDS_PREPASS_SIZE);
+        this.reduceParamsPass2Buffer = createReduceParamsBuffer(device, BOUNDS_PASS_1_COUNT, 0, 0);
+        this.reduceParamsPass3Buffer = createReduceParamsBuffer(device, BOUNDS_PASS_2_COUNT, 0, 0);
+        this.reducePartialA = createStorageBuffer(device, BOUNDS_PASS_1_COUNT, 'Terrain bounds reduce partial A');
+        this.reducePartialB = createStorageBuffer(device, BOUNDS_PASS_2_COUNT, 'Terrain bounds reduce partial B');
+        this.reduceFinal = createStorageBuffer(device, BOUNDS_PASS_3_COUNT, 'Terrain bounds reduce final');
+        this.reduceReadback = device.createBuffer({
+            label: 'Terrain bounds readback buffer',
+            size: 4 * Float32Array.BYTES_PER_ELEMENT,
+            usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
 
         const overlaySampler = device.createSampler({
             label: 'Terrain overlay sampler',
@@ -126,7 +179,9 @@ export class TerrainRenderer {
             ],
         });
 
-        const shaderModule = device.createShaderModule({ label: 'Terrain shader', code: terrainShader });
+        const vertexShaderModule = device.createShaderModule({ label: 'Terrain vertex shader', code: terrainVertexSource });
+        const fragmentShaderModule = device.createShaderModule({ label: 'Terrain fragment shader', code: terrainFragmentSource });
+        const reduceShaderModule = device.createShaderModule({ label: 'Terrain bounds reduce shader', code: terrainBoundsReduceSource });
         const vertexBuffers: GPUVertexBufferLayout[] = [
             {
                 arrayStride: 12,
@@ -148,8 +203,8 @@ export class TerrainRenderer {
         this.pipeline = device.createRenderPipeline({
             label: 'LOD terrain pipeline',
             layout,
-            vertex: { module: shaderModule, entryPoint: 'vertexMain', buffers: vertexBuffers },
-            fragment: { module: shaderModule, entryPoint: 'fragmentMain', targets: [{ format: colorFormat }] },
+            vertex: { module: vertexShaderModule, entryPoint: 'vertexMain', buffers: vertexBuffers },
+            fragment: { module: fragmentShaderModule, entryPoint: 'fragmentMain', targets: [{ format: colorFormat }] },
             primitive: { topology: 'triangle-list', cullMode: 'none' },
             depthStencil: { depthWriteEnabled: true, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
@@ -157,8 +212,8 @@ export class TerrainRenderer {
         this.meshPipeline = device.createRenderPipeline({
             label: 'LOD terrain mesh overlay pipeline',
             layout,
-            vertex: { module: shaderModule, entryPoint: 'meshVertexMain', buffers: vertexBuffers },
-            fragment: { module: shaderModule, entryPoint: 'meshFragmentMain', targets: [{ format: colorFormat }] },
+            vertex: { module: vertexShaderModule, entryPoint: 'meshVertexMain', buffers: vertexBuffers },
+            fragment: { module: fragmentShaderModule, entryPoint: 'meshFragmentMain', targets: [{ format: colorFormat }] },
             primitive: { topology: 'line-list' },
             depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
@@ -167,7 +222,7 @@ export class TerrainRenderer {
             label: 'Terrain overlay bounds debug pipeline',
             layout,
             vertex: {
-                module: shaderModule,
+                module: vertexShaderModule,
                 entryPoint: 'boundsVertexMain',
                 buffers: [
                     {
@@ -176,10 +231,75 @@ export class TerrainRenderer {
                     },
                 ],
             },
-            fragment: { module: shaderModule, entryPoint: 'boundsFragmentMain', targets: [{ format: colorFormat }] },
+            fragment: { module: fragmentShaderModule, entryPoint: 'boundsFragmentMain', targets: [{ format: colorFormat }] },
             primitive: { topology: 'line-list' },
             depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
+        });
+        this.visibleBoundsPipeline = device.createRenderPipeline({
+            label: 'Terrain visible bounds prepass pipeline',
+            layout,
+            vertex: { module: vertexShaderModule, entryPoint: 'visibleBoundsVertexMain', buffers: vertexBuffers },
+            fragment: { module: fragmentShaderModule, entryPoint: 'visibleBoundsFragmentMain', targets: [{ format: 'rgba16float' }] },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'greater-equal', format: 'depth32float' },
+        });
+        const reduceTextureBindGroupLayout = device.createBindGroupLayout({
+            label: 'Terrain bounds texture reduce bind group layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'unfilterable-float' } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            ],
+        });
+        const reduceBufferBindGroupLayout = device.createBindGroupLayout({
+            label: 'Terrain bounds buffer reduce bind group layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+                { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+                { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            ],
+        });
+        const emptyBindGroupLayout = device.createBindGroupLayout({
+            label: 'Terrain bounds empty bind group layout',
+            entries: [],
+        });
+        this.reduceTexturePipeline = device.createComputePipeline({
+            label: 'Terrain bounds texture reduce pipeline',
+            layout: device.createPipelineLayout({ bindGroupLayouts: [reduceTextureBindGroupLayout] }),
+            compute: { module: reduceShaderModule, entryPoint: 'reduceTexture' },
+        });
+        this.reduceBufferPipeline = device.createComputePipeline({
+            label: 'Terrain bounds buffer reduce pipeline',
+            layout: device.createPipelineLayout({ bindGroupLayouts: [emptyBindGroupLayout, reduceBufferBindGroupLayout] }),
+            compute: { module: reduceShaderModule, entryPoint: 'reduceBuffer' },
+        });
+        this.reduceTextureBindGroup = device.createBindGroup({
+            label: 'Terrain bounds texture reduce bind group',
+            layout: reduceTextureBindGroupLayout,
+            entries: [
+                { binding: 0, resource: this.visibleBoundsTextureView },
+                { binding: 1, resource: { buffer: this.reducePartialA } },
+                { binding: 2, resource: { buffer: this.reduceParamsTextureBuffer } },
+            ],
+        });
+        this.reducePass2BindGroup = device.createBindGroup({
+            label: 'Terrain bounds reduce pass 2 bind group',
+            layout: reduceBufferBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.reducePartialA } },
+                { binding: 1, resource: { buffer: this.reducePartialB } },
+                { binding: 2, resource: { buffer: this.reduceParamsPass2Buffer } },
+            ],
+        });
+        this.reducePass3BindGroup = device.createBindGroup({
+            label: 'Terrain bounds reduce pass 3 bind group',
+            layout: reduceBufferBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.reducePartialB } },
+                { binding: 1, resource: { buffer: this.reduceFinal } },
+                { binding: 2, resource: { buffer: this.reduceParamsPass3Buffer } },
+            ],
         });
     }
 
@@ -189,6 +309,10 @@ export class TerrainRenderer {
 
     get terrainHeightTextureView(): GPUTextureView {
         return this.heightTextureView;
+    }
+
+    get visibleBounds(): [number, number, number, number] | null {
+        return this.latestReducedBounds;
     }
 
     update(
@@ -249,6 +373,89 @@ export class TerrainRenderer {
         }
     }
 
+    encodeVisibleBoundsReduction(encoder: GPUCommandEncoder): void {
+        if (this.instanceCount === 0) {
+            return;
+        }
+
+        const renderPass = encoder.beginRenderPass({
+            label: 'Terrain visible bounds prepass',
+            colorAttachments: [
+                {
+                    view: this.visibleBoundsTextureView,
+                    clearValue: { r: 65504, g: 65504, b: -65504, a: -65504 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                },
+            ],
+            depthStencilAttachment: {
+                view: this.visibleBoundsDepthTextureView,
+                depthClearValue: 0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
+        renderPass.setBindGroup(0, this.bindGroup);
+        renderPass.setVertexBuffer(0, this.mesh.vertexBuffer);
+        renderPass.setVertexBuffer(1, this.instanceBuffer);
+        renderPass.setPipeline(this.visibleBoundsPipeline);
+        renderPass.setIndexBuffer(this.mesh.indexBuffer, 'uint32');
+        renderPass.drawIndexed(this.mesh.indexCount, this.instanceCount);
+        renderPass.end();
+
+        const computePass = encoder.beginComputePass({ label: 'Terrain visible bounds reduction' });
+        computePass.setPipeline(this.reduceTexturePipeline);
+        computePass.setBindGroup(0, this.reduceTextureBindGroup);
+        computePass.dispatchWorkgroups(BOUNDS_PASS_1_COUNT);
+        computePass.setPipeline(this.reduceBufferPipeline);
+        computePass.setBindGroup(1, this.reducePass2BindGroup);
+        computePass.dispatchWorkgroups(BOUNDS_PASS_2_COUNT);
+        computePass.setBindGroup(1, this.reducePass3BindGroup);
+        computePass.dispatchWorkgroups(BOUNDS_PASS_3_COUNT);
+        computePass.end();
+
+        if (!this.boundsReadbackPending && !this.boundsReadbackInFlight) {
+            encoder.copyBufferToBuffer(
+                this.reduceFinal,
+                0,
+                this.reduceReadback,
+                0,
+                4 * Float32Array.BYTES_PER_ELEMENT,
+            );
+            this.boundsReadbackPending = true;
+        }
+    }
+
+    resolveVisibleBoundsReadback(): void {
+        if (!this.boundsReadbackPending || this.boundsReadbackInFlight) {
+            return;
+        }
+
+        this.boundsReadbackPending = false;
+        this.boundsReadbackInFlight = true;
+        this.reduceReadback.mapAsync(GPUMapMode.READ).then(() => {
+            const values = new Float32Array(this.reduceReadback.getMappedRange().slice(0));
+            this.reduceReadback.unmap();
+            this.boundsReadbackInFlight = false;
+
+            const [minX, minY, maxX, maxY] = values;
+            if (
+                Number.isFinite(minX) &&
+                Number.isFinite(minY) &&
+                Number.isFinite(maxX) &&
+                Number.isFinite(maxY) &&
+                minX <= maxX &&
+                minY <= maxY
+            ) {
+                this.latestReducedBounds = [minX, minY, maxX, maxY];
+            }
+        }).catch((error: unknown) => {
+            this.boundsReadbackInFlight = false;
+            console.warn('Terrain visible bounds readback failed:', error);
+        });
+    }
+
+
     renderOverlayBounds(
         pass: GPURenderPassEncoder,
         bounds: readonly [number, number, number, number],
@@ -281,12 +488,21 @@ export class TerrainRenderer {
 
     destroy(): void {
         this.heightTexture.destroy();
+        this.visibleBoundsTexture.destroy();
+        this.visibleBoundsDepthTexture.destroy();
         this.mesh.vertexBuffer.destroy();
         this.mesh.indexBuffer.destroy();
         this.mesh.lineIndexBuffer.destroy();
         this.cameraBuffer.destroy();
         this.instanceBuffer.destroy();
         this.boundsVertexBuffer.destroy();
+        this.reduceParamsTextureBuffer.destroy();
+        this.reduceParamsPass2Buffer.destroy();
+        this.reduceParamsPass3Buffer.destroy();
+        this.reducePartialA.destroy();
+        this.reducePartialB.destroy();
+        this.reduceFinal.destroy();
+        this.reduceReadback.destroy();
     }
 
     private selectBlocks(camera: Camera, enableCulling: boolean): void {
@@ -436,4 +652,23 @@ function rangesOverlap(minA: number, maxA: number, minB: number, maxB: number): 
 
 function nextPowerOfTwo(value: number): number {
     return 2 ** Math.ceil(Math.log2(Math.max(1, value)));
+}
+
+function createStorageBuffer(device: GPUDevice, vec4Count: number, label: string): GPUBuffer {
+    return device.createBuffer({
+        label,
+        size: Math.max(1, vec4Count) * 4 * Float32Array.BYTES_PER_ELEMENT,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    });
+}
+
+function createReduceParamsBuffer(device: GPUDevice, total: number, width: number, height: number): GPUBuffer {
+    const data = new Uint32Array([total, width, height, 0]);
+    const buffer = device.createBuffer({
+        label: 'Terrain bounds reduce params',
+        size: data.byteLength,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(buffer, 0, data);
+    return buffer;
 }
