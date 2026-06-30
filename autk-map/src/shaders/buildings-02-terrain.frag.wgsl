@@ -3,15 +3,19 @@ fn rand(n: f32) -> f32 { return fract(sin(n) * 43758.5453123); }
 @group(0) @binding(0) var texSampler: sampler;
 @group(0) @binding(1) var colorTex: texture_2d<f32>;
 @group(0) @binding(2) var normalTex: texture_2d<f32>;
-@group(0) @binding(3) var terrainDepthTex: texture_depth_multisampled_2d;
+@group(0) @binding(3) var terrainDepthTex: texture_depth_2d;
+@group(0) @binding(4) var buildingDepthTex: texture_depth_2d;
 
 fn terrainDepthAt(uv: vec2<f32>) -> f32 {
     let dims = vec2<i32>(textureDimensions(terrainDepthTex));
     let coords = clamp(vec2<i32>(floor(uv * vec2<f32>(dims))), vec2<i32>(0), dims - vec2<i32>(1));
-    return max(
-        max(textureLoad(terrainDepthTex, coords, 0), textureLoad(terrainDepthTex, coords, 1)),
-        max(textureLoad(terrainDepthTex, coords, 2), textureLoad(terrainDepthTex, coords, 3))
-    );
+    return textureLoad(terrainDepthTex, coords, 0);
+}
+
+fn buildingDepthAt(uv: vec2<f32>) -> f32 {
+    let dims = vec2<i32>(textureDimensions(buildingDepthTex));
+    let coords = clamp(vec2<i32>(floor(uv * vec2<f32>(dims))), vec2<i32>(0), dims - vec2<i32>(1));
+    return textureLoad(buildingDepthTex, coords, 0);
 }
 
 @fragment
@@ -21,7 +25,8 @@ fn main(@location(0) uvs : vec2<f32>) -> @location(0) vec4f {
     let n0tex = textureSample(normalTex, texSampler, fuvs);
     let color = textureSample(colorTex, texSampler, fuvs);
     let terrainDepth = terrainDepthAt(fuvs);
-    let visible = n0tex.a > 0.0005 && terrainDepth <= n0tex.a + 0.002;
+    let buildingDepth = buildingDepthAt(fuvs);
+    let visible = color.a > 0.0005 && buildingDepth >= terrainDepth - 0.00001;
     let visibleFactor = select(0.0, 1.0, visible);
 
     let n0 = normalize(n0tex.xyz * 2.0 - 1.0);

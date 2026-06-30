@@ -189,6 +189,7 @@ export class PipelineBuildingSSAO extends Pipeline {
                 { binding: 1, resource: shared.colorsSharedBuffer.view },
                 { binding: 2, resource: shared.normalsSharedBuffer.view },
                 { binding: 3, resource: terrainDepthTextureView },
+                { binding: 4, resource: shared.depthBufferPass01.view },
             ],
         });
         passEncoder.setPipeline(shared.terrainCompositePipeline);
@@ -562,7 +563,8 @@ export class PipelineBuildingSSAO extends Pipeline {
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
                 { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d', multisampled: true } },
+                { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d' } },
+                { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth', viewDimension: '2d' } },
             ],
         });
         const texturesPass02BindGroup = renderer.device.createBindGroup({

@@ -43,7 +43,7 @@ fn main(@location(0) inPosition: vec3f, @location(1) inNormal: vec3f, @location(
     var vsOut: VSOut;
 
     let terrainZ = terrainHeight(inPosition.xy);
-    vsOut.outPosition = projection * modelView * vec4f(inPosition.x, inPosition.y, inPosition.z + terrainZ + zIndex, 1);
+    vsOut.outPosition = projection * modelView * vec4f(inPosition.x, inPosition.y, inPosition.z + terrainZ, 1);
     vsOut.outNormal = inNormal;
     vsOut.outThematic = inThematic;
     vsOut.outHighlighted = inHighlighted;

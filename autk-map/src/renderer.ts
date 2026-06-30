@@ -89,6 +89,10 @@ export class Renderer {
     private _overlayDepthTextureView?: GPUTextureView;
     private _overlayWidth = 0;
     private _overlayHeight = 0;
+    private _terrainDepthTexture?: GPUTexture;
+    private _terrainDepthTextureView?: GPUTextureView;
+    private _terrainDepthWidth = 0;
+    private _terrainDepthHeight = 0;
 
     /**
      * Creates a renderer bound to a canvas.
@@ -132,6 +136,13 @@ export class Renderer {
 
     get overlayHeight(): number {
         return this._overlayHeight;
+    }
+
+    get terrainDepthTextureView(): GPUTextureView {
+        if (!this._terrainDepthTextureView) {
+            throw new Error('Terrain depth texture has not been configured.');
+        }
+        return this._terrainDepthTextureView;
     }
 
     /** Device pixel ratio currently applied to the render surface. */
@@ -506,6 +517,41 @@ export class Renderer {
         });
     }
 
+    configureTerrainDepthTexture(width: number, height: number): boolean {
+        if (!this._device || (this._terrainDepthTexture && width === this._terrainDepthWidth && height === this._terrainDepthHeight)) {
+            return false;
+        }
+
+        this._terrainDepthTexture?.destroy();
+        this._terrainDepthWidth = width;
+        this._terrainDepthHeight = height;
+        this._terrainDepthTexture = this._device.createTexture({
+            label: 'Terrain composite depth texture',
+            size: [width, height],
+            format: 'depth32float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this._terrainDepthTextureView = this._terrainDepthTexture.createView();
+        return true;
+    }
+
+    beginTerrainDepthRenderPass(): GPURenderPassEncoder {
+        if (!this._terrainDepthTextureView) {
+            throw new Error('Renderer terrain depth pass requested before terrain depth texture configuration.');
+        }
+
+        return this.commandEncoder.beginRenderPass({
+            label: 'Terrain composite depth pass',
+            colorAttachments: [],
+            depthStencilAttachment: {
+                view: this._terrainDepthTextureView,
+                depthClearValue: 0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
+    }
+
     configureOverlayTexture(width: number, height: number): boolean {
         if (!this._device || (this._overlayTexture && width === this._overlayWidth && height === this._overlayHeight)) {
             return false;
@@ -721,6 +767,7 @@ export class Renderer {
         this._overlayTexture?.destroy();
         this._overlayMultisampleTexture?.destroy();
         this._overlayDepthTexture?.destroy();
+        this._terrainDepthTexture?.destroy();
         this._pickReadbackBuffers.forEach((slot) => slot.buffer?.destroy());
         this._context?.unconfigure();
 

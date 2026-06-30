@@ -1122,6 +1122,13 @@ export class AutkMap {
             );
         }
         terrainPass.end();
+        this._renderer.configureTerrainDepthTexture(
+            2 * this._renderer.pixelWidth,
+            2 * this._renderer.pixelHeight,
+        );
+        const terrainDepthPass = this._renderer.beginTerrainDepthRenderPass();
+        activeTerrain.renderDepth(terrainDepthPass);
+        terrainDepthPass.end();
 
         const visible3DLayers = this._layerManager.layers.filter(
             (layer): layer is Triangles3DLayer => !layer.layerRenderInfo.isSkip && layer instanceof Triangles3DLayer
@@ -1140,7 +1147,7 @@ export class AutkMap {
             PipelineBuildingSSAO.compositeSharedPassWithTerrainDepth(
                 this._renderer,
                 buildingCompositePass,
-                this._renderer.depthTextureView,
+                this._renderer.terrainDepthTextureView,
             );
             buildingCompositePass.end();
         }

@@ -68,18 +68,18 @@ export class TerrainLayersNiteroi {
             });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
-        const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
-        this.map.loadCollection(ELEVATION_LAYER_ID, {
-            collection: elevation,
-            type: 'raster',
-            property: 'band_1',
-        });
-        this.map.updateColorMap(ELEVATION_LAYER_ID, {
-            colorMap: {
-                interpolator: ColorMapInterpolator.SEQ_TURBO,
-                domainSpec: { type: ColorMapDomainStrategy.PERCENTILE, params: [2, 98] },
-            },
-        });
+        // const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
+        // this.map.loadCollection(ELEVATION_LAYER_ID, {
+        //     collection: elevation,
+        //     type: 'raster',
+        //     property: 'band_1',
+        // });
+        // this.map.updateColorMap(ELEVATION_LAYER_ID, {
+        //     colorMap: {
+        //         interpolator: ColorMapInterpolator.SEQ_TURBO,
+        //         domainSpec: { type: ColorMapDomainStrategy.PERCENTILE, params: [2, 98] },
+        //     },
+        // });
     }
 
 }

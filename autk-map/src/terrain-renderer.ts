@@ -55,6 +55,7 @@ export class TerrainRenderer {
     readonly bounds: [number, number, number, number];
 
     private readonly pipeline: GPURenderPipeline;
+    private readonly depthPipeline: GPURenderPipeline;
     private readonly meshPipeline: GPURenderPipeline;
     private readonly boundsPipeline: GPURenderPipeline;
     private readonly visibleBoundsPipeline: GPURenderPipeline;
@@ -208,6 +209,13 @@ export class TerrainRenderer {
             primitive: { topology: 'triangle-list', cullMode: 'none' },
             depthStencil: { depthWriteEnabled: true, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
+        });
+        this.depthPipeline = device.createRenderPipeline({
+            label: 'LOD terrain composite depth pipeline',
+            layout,
+            vertex: { module: vertexShaderModule, entryPoint: 'vertexMain', buffers: vertexBuffers },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'greater-equal', format: 'depth32float' },
         });
         this.meshPipeline = device.createRenderPipeline({
             label: 'LOD terrain mesh overlay pipeline',
@@ -371,6 +379,19 @@ export class TerrainRenderer {
             pass.setIndexBuffer(this.mesh.lineIndexBuffer, 'uint32');
             pass.drawIndexed(this.mesh.lineIndexCount, this.instanceCount);
         }
+    }
+
+    renderDepth(pass: GPURenderPassEncoder): void {
+        if (this.instanceCount === 0) {
+            return;
+        }
+
+        pass.setBindGroup(0, this.bindGroup);
+        pass.setVertexBuffer(0, this.mesh.vertexBuffer);
+        pass.setVertexBuffer(1, this.instanceBuffer);
+        pass.setPipeline(this.depthPipeline);
+        pass.setIndexBuffer(this.mesh.indexBuffer, 'uint32');
+        pass.drawIndexed(this.mesh.indexCount, this.instanceCount);
     }
 
     encodeVisibleBoundsReduction(encoder: GPUCommandEncoder): void {
