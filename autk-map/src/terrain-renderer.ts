@@ -48,9 +48,11 @@ export class TerrainRenderer {
 
     private readonly pipeline: GPURenderPipeline;
     private readonly meshPipeline: GPURenderPipeline;
+    private readonly boundsPipeline: GPURenderPipeline;
     private readonly cameraBuffer: GPUBuffer;
     private readonly bindGroup: GPUBindGroup;
     private readonly instanceBuffer: GPUBuffer;
+    private readonly boundsVertexBuffer: GPUBuffer;
     private readonly heightTexture: GPUTexture;
     private readonly heightTextureView: GPUTextureView;
     private readonly mesh: TerrainMesh;
@@ -70,12 +72,17 @@ export class TerrainRenderer {
         this.mesh = createPatchMesh(device);
         this.cameraBuffer = device.createBuffer({
             label: 'Terrain camera uniform buffer',
-            size: 160,
+            size: 176,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         this.instanceBuffer = device.createBuffer({
             label: 'Terrain block instance buffer',
             size: this.instanceData.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        this.boundsVertexBuffer = device.createBuffer({
+            label: 'Terrain overlay bounds debug vertices',
+            size: 12 * 3 * Float32Array.BYTES_PER_ELEMENT,
             usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
         });
         this.heightTexture = device.createTexture({
@@ -156,6 +163,24 @@ export class TerrainRenderer {
             depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
         });
+        this.boundsPipeline = device.createRenderPipeline({
+            label: 'Terrain overlay bounds debug pipeline',
+            layout,
+            vertex: {
+                module: shaderModule,
+                entryPoint: 'boundsVertexMain',
+                buffers: [
+                    {
+                        arrayStride: 3 * Float32Array.BYTES_PER_ELEMENT,
+                        attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }],
+                    },
+                ],
+            },
+            fragment: { module: shaderModule, entryPoint: 'boundsFragmentMain', targets: [{ format: colorFormat }] },
+            primitive: { topology: 'line-list' },
+            depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
+            multisample: { count: sampleCount },
+        });
     }
 
     get terrainSource(): TerrainSource {
@@ -169,9 +194,10 @@ export class TerrainRenderer {
     update(
         camera: Camera,
         overlayBounds: readonly [number, number, number, number],
+        overlayUvRect: readonly [number, number, number, number],
         options: TerrainDebugOptions = {},
     ): void {
-        const uniform = new Float32Array(40);
+        const uniform = new Float32Array(44);
         uniform.set(camera.getViewProjectionMatrix(), 0);
         uniform.set([...camera.getEye(), 1], 16);
         uniform.set([0.42, -0.46, -0.78, 0], 20);
@@ -179,6 +205,7 @@ export class TerrainRenderer {
         uniform.set([this.source.originX, this.source.originY, this.source.cellSizeX, this.source.cellSizeY], 28);
         uniform.set([this.source.width, this.source.height, this.source.minHeight, this.source.maxHeight], 32);
         uniform.set([overlayBounds[0], overlayBounds[1], overlayBounds[2] - overlayBounds[0], overlayBounds[3] - overlayBounds[1]], 36);
+        uniform.set(overlayUvRect, 40);
         this.device.queue.writeBuffer(this.cameraBuffer, 0, uniform);
 
         if (!options.freezeLod || this.lastBlocks.length === 0) {
@@ -222,6 +249,36 @@ export class TerrainRenderer {
         }
     }
 
+    renderOverlayBounds(
+        pass: GPURenderPassEncoder,
+        bounds: readonly [number, number, number, number],
+        cameraPosition?: readonly [number, number],
+    ): void {
+        const z = this.source.maxHeight + 20;
+        const [minX, minY, maxX, maxY] = bounds;
+        const values = [
+            minX, minY, z, maxX, minY, z,
+            maxX, minY, z, maxX, maxY, z,
+            maxX, maxY, z, minX, maxY, z,
+            minX, maxY, z, minX, minY, z,
+        ];
+        if (cameraPosition) {
+            const markerSize = Math.max(maxX - minX, maxY - minY) * 0.025;
+            const [x, y] = cameraPosition;
+            values.push(
+                x - markerSize, y, z, x + markerSize, y, z,
+                x, y - markerSize, z, x, y + markerSize, z,
+            );
+        }
+        const vertices = new Float32Array(values);
+
+        this.device.queue.writeBuffer(this.boundsVertexBuffer, 0, vertices);
+        pass.setBindGroup(0, this.bindGroup);
+        pass.setPipeline(this.boundsPipeline);
+        pass.setVertexBuffer(0, this.boundsVertexBuffer);
+        pass.draw(vertices.length / 3);
+    }
+
     destroy(): void {
         this.heightTexture.destroy();
         this.mesh.vertexBuffer.destroy();
@@ -229,6 +286,7 @@ export class TerrainRenderer {
         this.mesh.lineIndexBuffer.destroy();
         this.cameraBuffer.destroy();
         this.instanceBuffer.destroy();
+        this.boundsVertexBuffer.destroy();
     }
 
     private selectBlocks(camera: Camera, enableCulling: boolean): void {

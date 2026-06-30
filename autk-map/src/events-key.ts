@@ -95,5 +95,13 @@ export class KeyEvents {
                 layer.makeLayerRenderInfoDirty();
             }
         }
+
+        if (event.key.toLowerCase() === 'b') {
+            this._map.toggleTerrainOverlayBoundsDebug();
+        }
+
+        if (event.key.toLowerCase() === 'r') {
+            this._map.resetCamera();
+        }
     }
 }

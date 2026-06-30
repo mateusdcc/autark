@@ -7,6 +7,7 @@ struct CameraUniform {
   heightOriginCell: vec4<f32>,
   heightDims: vec4<f32>,
   overlayBounds: vec4<f32>,
+  overlayUvRect: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -46,7 +47,8 @@ fn overlayColor(xy: vec2<f32>) -> vec4<f32> {
     return vec4<f32>(0.0);
   }
 
-  return textureSample(overlayTexture, overlaySampler, vec2<f32>(uv.x, 1.0 - uv.y));
+  let atlasUv = camera.overlayUvRect.xy + vec2<f32>(uv.x, 1.0 - uv.y) * camera.overlayUvRect.zw;
+  return textureSample(overlayTexture, overlaySampler, atlasUv);
 }
 
 fn inOverlayBounds(xy: vec2<f32>) -> bool {
@@ -143,5 +145,21 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
 @fragment
 fn meshFragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   return vec4<f32>(lodDebugColor(input.level), 1.0);
+}
+
+@vertex
+fn boundsVertexMain(@location(0) position: vec3<f32>) -> VertexOutput {
+  var output: VertexOutput;
+  output.clipPosition = camera.viewProjection * vec4<f32>(position, 1.0);
+  output.worldPosition = position;
+  output.normal = vec3<f32>(0.0, 0.0, 1.0);
+  output.level = 0.0;
+  return output;
+}
+
+@fragment
+fn boundsFragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+  _ = input;
+  return vec4<f32>(1.0, 1.0, 0.0, 1.0);
 }
 `;

@@ -79,7 +79,7 @@ import type { TerrainDebugOptions } from './terrain-renderer';
 import { terrainSourceFromRaster } from './terrain-source';
 import type { TerrainSource } from './terrain-source';
 
-const clampNumber = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const TERRAIN_OVERLAY_TEXTURE_SIZE = 4096;
 
 /**
  * Main map controller for rendering, interaction, and layer lifecycle.
@@ -125,6 +125,8 @@ export class AutkMap {
     protected _renderErrorLogged: boolean = false;
     private _terrainRenderer: TerrainRenderer | null = null;
     private _terrainSource: TerrainSource | null = null;
+    private _frozenTerrainOverlayBounds: [number, number, number, number] | null = null;
+    private _frozenTerrainCameraPosition: [number, number] | null = null;
     private readonly _terrainOverlayCamera: Camera = new Camera();
     private _terrainDebug: Required<TerrainDebugOptions> = {
         showMesh: false,
@@ -744,11 +746,16 @@ export class AutkMap {
 
         this._terrainSource = terrainSourceFromRaster(collection, property, this.layerManager.origin);
         this.fitCameraToTerrainBounds(this._terrainSource.bounds);
+        const overlaySize = this.getTerrainOverlayTextureSize();
         this._renderer.configureOverlayTexture(
-            Math.max(1, this._renderer.pixelWidth),
-            Math.max(1, this._renderer.pixelHeight),
+            overlaySize,
+            overlaySize,
         );
         this.rebuildTerrainRenderer();
+    }
+
+    private getTerrainOverlayTextureSize(): number {
+        return Math.min(TERRAIN_OVERLAY_TEXTURE_SIZE, this._renderer.device.limits.maxTextureDimension2D);
     }
 
     private rebuildTerrainRenderer(): void {
@@ -790,6 +797,35 @@ export class AutkMap {
 
     updateTerrainDebug(options: Partial<typeof this._terrainDebug>): void {
         this._terrainDebug = { ...this._terrainDebug, ...options };
+    }
+
+    resetCamera(): void {
+        if (this._terrainSource) {
+            this.fitCameraToTerrainBounds(this._terrainSource.bounds);
+            return;
+        }
+
+        this._camera.resetCamera([0, 1, 0], [0, 0, 0], [0, 0, 10000]);
+        this._camera.resize(this._renderer.pixelWidth, this._renderer.pixelHeight);
+    }
+
+    toggleTerrainOverlayBoundsDebug(): void {
+        if (this._frozenTerrainOverlayBounds) {
+            this._frozenTerrainOverlayBounds = null;
+            this._frozenTerrainCameraPosition = null;
+            console.log('Terrain overlay bounds debug: cleared');
+            return;
+        }
+
+        if (!this._terrainRenderer) {
+            console.warn('Terrain overlay bounds debug requires terrain mode.');
+            return;
+        }
+
+        this._frozenTerrainOverlayBounds = this.computeTerrainVisibleBounds(this._terrainRenderer.bounds);
+        const [x, y] = this._camera.getEye();
+        this._frozenTerrainCameraPosition = [x, y];
+        console.log('Terrain overlay bounds debug:', this._frozenTerrainOverlayBounds, 'camera:', this._frozenTerrainCameraPosition);
     }
 
     /**
@@ -1014,9 +1050,10 @@ export class AutkMap {
         }
 
         this._renderer.start();
+        const overlaySize = this.getTerrainOverlayTextureSize();
         const overlayResized = this._renderer.configureOverlayTexture(
-            Math.max(1, this._renderer.pixelWidth),
-            Math.max(1, this._renderer.pixelHeight),
+            overlaySize,
+            overlaySize,
         );
         if (overlayResized) {
             this.rebuildTerrainRenderer();
@@ -1026,6 +1063,13 @@ export class AutkMap {
             return;
         }
         const overlayBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
+        const overlayPixelRect = this.computeTerrainOverlayPixelRect(overlayBounds);
+        const overlayUvRect: [number, number, number, number] = [
+            overlayPixelRect.x / this._renderer.overlayWidth,
+            overlayPixelRect.y / this._renderer.overlayHeight,
+            overlayPixelRect.width / this._renderer.overlayWidth,
+            overlayPixelRect.height / this._renderer.overlayHeight,
+        ];
         this._terrainOverlayCamera.setOrthographicBounds(
             overlayBounds[0],
             overlayBounds[2],
@@ -1039,6 +1083,8 @@ export class AutkMap {
             }
         });
         const overlayPass = this._renderer.beginOverlayRenderPass();
+        overlayPass.setViewport(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height, 0, 1);
+        overlayPass.setScissorRect(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height);
         this._layerManager.layers.forEach((layer) => {
             if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
                 layer.renderPass(this._terrainOverlayCamera, overlayPass);
@@ -1046,9 +1092,16 @@ export class AutkMap {
         });
         overlayPass.end();
 
-        activeTerrain.update(this._camera, overlayBounds, this._terrainDebug);
+        activeTerrain.update(this._camera, overlayBounds, overlayUvRect, this._terrainDebug);
         const terrainPass = this._renderer.beginMainRenderPass();
         activeTerrain.render(terrainPass, this._terrainDebug.showMesh);
+        if (this._frozenTerrainOverlayBounds) {
+            activeTerrain.renderOverlayBounds(
+                terrainPass,
+                this._frozenTerrainOverlayBounds,
+                this._frozenTerrainCameraPosition ?? undefined,
+            );
+        }
         terrainPass.end();
 
         const visible3DLayers = this._layerManager.layers.filter(
@@ -1078,118 +1131,72 @@ export class AutkMap {
     private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
         const points: Array<[number, number]> = [];
         const eye = this._camera.getEye();
-        const lookAt = this._camera.getLookAt();
-        const forwardX = lookAt[0] - eye[0];
-        const forwardY = lookAt[1] - eye[1];
-        const forwardLength = Math.hypot(forwardX, forwardY);
-        const hasHorizontalForward = forwardLength > 1e-3;
-        const normalizedForward: [number, number] = hasHorizontalForward
-            ? [forwardX / forwardLength, forwardY / forwardLength]
-            : [0, 1];
+        const terrainDiagonal = Math.hypot(terrainBounds[2] - terrainBounds[0], terrainBounds[3] - terrainBounds[1]);
+        const maxRayDistance = Math.min(
+            this._camera.getFar(),
+            Math.max(Math.abs(eye[2]) * 8, terrainDiagonal * 0.05, 1),
+        );
         const corners: Array<[number, number]> = [
             [0, 0],
             [1, 0],
-            [0, 1],
             [1, 1],
-            [0.5, 0.5],
+            [0, 1],
         ];
 
         for (const [x, y] of corners) {
             const direction = this._camera.getWorldRayDirection(x, y);
-            if (Math.abs(direction[2]) < 1e-6) {
-                continue;
-            }
+            const groundDistance = Math.abs(direction[2]) > 1e-6
+                ? -eye[2] / direction[2]
+                : Number.POSITIVE_INFINITY;
+            const distance = groundDistance > 0
+                ? Math.min(groundDistance, maxRayDistance)
+                : maxRayDistance;
 
-            const t = -eye[2] / direction[2];
-            if (t <= 0) {
-                continue;
-            }
-
-            points.push([eye[0] + direction[0] * t, eye[1] + direction[1] * t]);
+            points.push([eye[0] + direction[0] * distance, eye[1] + direction[1] * distance]);
         }
 
         if (points.length === 0) {
+            const lookAt = this._camera.getLookAt();
             points.push([lookAt[0], lookAt[1]]);
-        }
-
-        const cameraHeight = Math.max(Math.abs(eye[2]), 1);
-        const terrainWidth = terrainBounds[2] - terrainBounds[0];
-        const terrainHeight = terrainBounds[3] - terrainBounds[1];
-        const terrainMaxSpan = Math.max(terrainWidth, terrainHeight);
-        const visibleDistance = clampNumber(cameraHeight * 6, cameraHeight * 1.5, terrainMaxSpan);
-        const lookAheadDistance = visibleDistance * 0.75;
-        const aspect = Math.max(this._renderer.pixelWidth / Math.max(this._renderer.pixelHeight, 1), 1e-6);
-        if (hasHorizontalForward) {
-            const right: [number, number] = [normalizedForward[1], -normalizedForward[0]];
-            const lateralHalfSpan = Math.min(
-                Math.max(
-                    cameraHeight * Math.tan(this._camera.getFovyRadians() * 0.5) * aspect * 1.25,
-                    visibleDistance * 0.35,
-                ),
-                terrainMaxSpan * 0.5,
-            );
-            const cameraPoint: [number, number] = [eye[0], eye[1]];
-            const lookAheadPoint: [number, number] = [
-                eye[0] + normalizedForward[0] * lookAheadDistance,
-                eye[1] + normalizedForward[1] * lookAheadDistance,
-            ];
-
-            points.push(cameraPoint, lookAheadPoint);
-            for (const point of [cameraPoint, lookAheadPoint]) {
-                points.push(
-                    [point[0] + right[0] * lateralHalfSpan, point[1] + right[1] * lateralHalfSpan],
-                    [point[0] - right[0] * lateralHalfSpan, point[1] - right[1] * lateralHalfSpan],
-                );
-            }
         }
 
         const rawMinX = Math.min(...points.map((point) => point[0]));
         const rawMaxX = Math.max(...points.map((point) => point[0]));
         const rawMinY = Math.min(...points.map((point) => point[1]));
         const rawMaxY = Math.max(...points.map((point) => point[1]));
-        let width = Math.max(rawMaxX - rawMinX, 1);
-        let height = Math.max(rawMaxY - rawMinY, 1);
-        const rawCenterX = (rawMinX + rawMaxX) * 0.5;
-        const rawCenterY = (rawMinY + rawMaxY) * 0.5;
-        const focusX = hasHorizontalForward ? eye[0] + normalizedForward[0] * lookAheadDistance * 0.5 : rawCenterX;
-        const focusY = hasHorizontalForward ? eye[1] + normalizedForward[1] * lookAheadDistance * 0.5 : rawCenterY;
-        const maxForwardSpan = Math.min(visibleDistance * 1.5, terrainMaxSpan);
-        const maxLateralSpan = Math.min(visibleDistance * 3.0, terrainMaxSpan);
-        const maxWidth = Math.max(maxLateralSpan, maxForwardSpan * aspect);
-        const maxHeight = Math.max(maxForwardSpan, maxLateralSpan / Math.max(aspect, 1e-6));
-        width = Math.min(width, maxWidth);
-        height = Math.min(height, maxHeight);
-
-        const texelX = width / Math.max(1, this._renderer.pixelWidth);
-        const texelY = height / Math.max(1, this._renderer.pixelHeight);
-        let minX = Math.floor((focusX - width * 0.5) / texelX) * texelX;
-        let minY = Math.floor((focusY - height * 0.5) / texelY) * texelY;
-        let maxX = minX + width;
-        let maxY = minY + height;
-
-        if (minX < terrainBounds[0]) {
-            maxX += terrainBounds[0] - minX;
-            minX = terrainBounds[0];
-        }
-        if (maxX > terrainBounds[2]) {
-            minX -= maxX - terrainBounds[2];
-            maxX = terrainBounds[2];
-        }
-        if (minY < terrainBounds[1]) {
-            maxY += terrainBounds[1] - minY;
-            minY = terrainBounds[1];
-        }
-        if (maxY > terrainBounds[3]) {
-            minY -= maxY - terrainBounds[3];
-            maxY = terrainBounds[3];
-        }
 
         return [
-            Math.max(minX, terrainBounds[0]),
-            Math.max(minY, terrainBounds[1]),
-            Math.min(maxX, terrainBounds[2]),
-            Math.min(maxY, terrainBounds[3]),
+            rawMinX,
+            rawMinY,
+            rawMaxX,
+            rawMaxY,
         ];
+    }
+
+    private computeTerrainOverlayPixelRect(bounds: readonly [number, number, number, number]): { x: number; y: number; width: number; height: number } {
+        const textureWidth = Math.max(1, this._renderer.overlayWidth);
+        const textureHeight = Math.max(1, this._renderer.overlayHeight);
+        const boundsWidth = Math.max(bounds[2] - bounds[0], 1);
+        const boundsHeight = Math.max(bounds[3] - bounds[1], 1);
+        const boundsAspect = boundsWidth / boundsHeight;
+        const textureAspect = textureWidth / textureHeight;
+        let width: number;
+        let height: number;
+
+        if (boundsAspect >= textureAspect) {
+            width = textureWidth;
+            height = Math.max(1, Math.floor(textureWidth / boundsAspect));
+        } else {
+            height = textureHeight;
+            width = Math.max(1, Math.floor(textureHeight * boundsAspect));
+        }
+
+        return {
+            x: Math.floor((textureWidth - width) * 0.5),
+            y: Math.floor((textureHeight - height) * 0.5),
+            width,
+            height,
+        };
     }
 
     /**

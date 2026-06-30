@@ -35,13 +35,13 @@ export class TerrainLayersNiteroi {
             outputTableName: ELEVATION_LAYER_ID,
         });
 
-        await this.db.loadGeojson({
-            geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
-            outputTableName: 'lotes',
-            layerType: 'buildings',
-        });
-
         console.log(`Loaded GeoTIFF table: ${ELEVATION_LAYER_ID}`);
+
+        // await this.db.loadGeojson({
+        //     geojsonFileUrl: `${URL}data/nit_buildings.geojson`,
+        //     outputTableName: 'lotes',
+        //     layerType: 'buildings',
+        // });
 
         this.map = new AutkMap(canvas);
 

@@ -126,6 +126,14 @@ export class Renderer {
         return this._pixelHeight;
     }
 
+    get overlayWidth(): number {
+        return this._overlayWidth;
+    }
+
+    get overlayHeight(): number {
+        return this._overlayHeight;
+    }
+
     /** Device pixel ratio currently applied to the render surface. */
     get devicePixelRatio(): number {
         return this._devicePixelRatio;
