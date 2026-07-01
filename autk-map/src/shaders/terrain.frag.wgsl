@@ -53,7 +53,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     discard;
   }
 
-  return vec4<f32>(overlay.rgb * overlay.a, overlay.a);
+  return vec4<f32>(overlay.rgb, overlay.a);
 }
 
 @fragment

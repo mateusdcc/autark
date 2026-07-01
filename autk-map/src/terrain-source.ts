@@ -42,15 +42,23 @@ export function terrainSourceFromRaster(
     const data = new Float32Array(values);
     let minHeight = Number.POSITIVE_INFINITY;
     let maxHeight = Number.NEGATIVE_INFINITY;
-    for (const value of data) {
+    let nonFinite = 0;
+    for (let i = 0; i < data.length; i++) {
+        const value = data[i];
         if (Number.isFinite(value)) {
             minHeight = Math.min(minHeight, value);
             maxHeight = Math.max(maxHeight, value);
+        } else {
+            data[i] = 0;
+            nonFinite++;
         }
     }
 
     if (!Number.isFinite(minHeight) || !Number.isFinite(maxHeight)) {
         throw new Error('Terrain source does not contain finite elevation values.');
+    }
+    if (nonFinite > 0) {
+        console.warn(`Terrain source contains ${nonFinite} non-finite elevation values. These were set to 0.`);
     }
 
     const bounds: [number, number, number, number] = [
