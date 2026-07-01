@@ -14,12 +14,13 @@
 
 import pickingVertexSource from './shaders/picking.vert.wgsl';
 import pickingFragmentSource from './shaders/picking.frag.wgsl';
-import picking3dVertexSource from './shaders/picking-3d.vert.wgsl';
+import picking3dTerrainVertexSource from './shaders/picking-3d-terrain.vert.wgsl';
 
 import { Camera } from '@urban-toolkit/autk-core';
 import { Renderer } from './renderer';
 import { Pipeline } from './pipeline';
 import { VectorLayer } from './layer-vector';
+import type { TerrainSource } from './terrain-source';
 
 /**
  * Picking pipeline for triangle-based vector geometry.
@@ -51,6 +52,11 @@ export class PipelineTrianglePicking extends Pipeline {
 
     /** Vertex component count: `2` for `xy` data, `3` for `xyz` data. */
     private _dimension: number;
+    private _terrainUniformBuffer?: GPUBuffer;
+    private _terrainBindGroupLayout?: GPUBindGroupLayout;
+    private _terrainBindGroup?: GPUBindGroup;
+    private _dummyTerrainTexture?: GPUTexture;
+    private _terrainUniformData = new Float32Array(8);
 
     /** Reused CPU-side upload buffer for positions. */
     private _positionData: Float32Array<ArrayBuffer> | null = null;
@@ -84,6 +90,8 @@ export class PipelineTrianglePicking extends Pipeline {
         this._positionBuffer?.destroy();
         this._objectIdsBuffer?.destroy();
         this._indicesBuffer?.destroy();
+        this._terrainUniformBuffer?.destroy();
+        this._dummyTerrainTexture?.destroy();
         super.destroy();
     }
 
@@ -103,6 +111,9 @@ export class PipelineTrianglePicking extends Pipeline {
 
         this.createVertexBuffers(mesh);
         this.createCameraUniformBindGroup();
+        if (this._dimension === 3) {
+            this.createTerrainHeightBindGroup();
+        }
         this.updateVertexBuffers(mesh);
 
         this.createPipeline();
@@ -119,7 +130,7 @@ export class PipelineTrianglePicking extends Pipeline {
     createShaders(): void {
         // Vertex shader
         const vsmDesc = {
-            code: this._dimension === 3 ? picking3dVertexSource : pickingVertexSource,
+            code: this._dimension === 3 ? picking3dTerrainVertexSource : pickingVertexSource,
         };
         this._vertModule = this._renderer.device.createShaderModule(vsmDesc);
 
@@ -157,6 +168,81 @@ export class PipelineTrianglePicking extends Pipeline {
             label: 'Primitive indices buffer',
             size: mesh.indices.length * 4,
             usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+        });
+    }
+
+    createTerrainHeightBindGroup(): void {
+        this._terrainUniformBuffer = this._renderer.device.createBuffer({
+            label: 'Picking terrain height uniform',
+            size: 8 * Float32Array.BYTES_PER_ELEMENT,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this._dummyTerrainTexture = this._renderer.device.createTexture({
+            label: 'Picking dummy terrain height texture',
+            size: [2, 2],
+            format: 'r32float',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+        this._terrainBindGroupLayout = this._renderer.device.createBindGroupLayout({
+            label: 'Picking terrain height bind group layout',
+            entries: [
+                { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+                { binding: 1, visibility: GPUShaderStage.VERTEX, texture: { sampleType: 'unfilterable-float' } },
+            ],
+        });
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Picking terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: this._dummyTerrainTexture.createView() },
+            ],
+        });
+        this.clearTerrainHeightSource();
+    }
+
+    setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
+        if (!this._terrainUniformBuffer || !this._terrainBindGroupLayout) {
+            return;
+        }
+
+        this._terrainUniformData.set([
+            source.originX,
+            source.originY,
+            source.cellSizeX,
+            source.cellSizeY,
+            source.width,
+            source.height,
+            1,
+            0,
+        ]);
+        this._renderer.device.queue.writeBuffer(this._terrainUniformBuffer, 0, this._terrainUniformData);
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Picking terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: heightTextureView },
+            ],
+        });
+    }
+
+    clearTerrainHeightSource(): void {
+        if (!this._terrainUniformBuffer || !this._terrainBindGroupLayout || !this._dummyTerrainTexture) {
+            return;
+        }
+
+        this._terrainUniformData.fill(0);
+        this._terrainUniformData[4] = 2;
+        this._terrainUniformData[5] = 2;
+        this._renderer.device.queue.writeBuffer(this._terrainUniformBuffer, 0, this._terrainUniformData);
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Picking terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: this._dummyTerrainTexture.createView() },
+            ],
         });
     }
 
@@ -288,7 +374,9 @@ export class PipelineTrianglePicking extends Pipeline {
 
         // Uniform Data
         const pipelineLayoutDesc = {
-            bindGroupLayouts: [this._cameraBindGroupLayout],
+            bindGroupLayouts: this._dimension === 3
+                ? [this._cameraBindGroupLayout, this._terrainBindGroupLayout!]
+                : [this._cameraBindGroupLayout],
         };
 
         // Pipeline
@@ -317,22 +405,16 @@ export class PipelineTrianglePicking extends Pipeline {
      * @param _passEncoder Unused external pass encoder.
      * @returns Records a picking render pass on the renderer's current command encoder.
      */
-    renderPass(camera: Camera, _passEncoder?: GPURenderPassEncoder): void {
+    renderPass(camera: Camera, passEncoder?: GPURenderPassEncoder): void {
         if (!this._renderer) {
             return;
         }
 
-        // Create a new command encoder
-        const commandEncoder = this._renderer.commandEncoder;
-
-        // Render pass description
-        const pickingPassDesc: GPURenderPassDescriptor = {
+        const ownsPass = !passEncoder;
+        passEncoder ??= this._renderer.commandEncoder.beginRenderPass({
             colorAttachments: [this._renderer.pickingBuffer],
             depthStencilAttachment: this._renderer.pickingDepthBuffer,
-        };
-
-        // Create a new pass commands encoder
-        const passEncoder = commandEncoder.beginRenderPass(pickingPassDesc);
+        });
 
         // sets the current pipeline
         passEncoder.setPipeline(this._pipeline);
@@ -349,11 +431,16 @@ export class PipelineTrianglePicking extends Pipeline {
 
         // sets the uniform buffers
         passEncoder.setBindGroup(0, this._cameraBindGroup);
+        if (this._dimension === 3 && this._terrainBindGroup) {
+            passEncoder.setBindGroup(1, this._terrainBindGroup);
+        }
 
         // draw command
         const indexCount = this._indicesBuffer.size / Uint32Array.BYTES_PER_ELEMENT;
         if (indexCount > 0) { passEncoder.drawIndexed(indexCount); }
-        passEncoder.end();
+        if (ownsPass) {
+            passEncoder.end();
+        }
     }
 
 }

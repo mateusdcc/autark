@@ -178,7 +178,7 @@ export abstract class Layer {
      * @param _camera Active camera used to compute view/projection transforms.
      * @returns Renders picking data when supported. Otherwise does nothing.
      */
-    renderPickingPass(_camera: Camera): void {}
+    renderPickingPass(_camera: Camera, _passEncoder?: GPURenderPassEncoder): void {}
 
     /**
      * Clears all highlighted features.

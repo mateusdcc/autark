@@ -344,6 +344,14 @@ export class PipelineBuildingSSAO extends Pipeline {
         this._terrainUniformData[4] = 2;
         this._terrainUniformData[5] = 2;
         this._renderer.device.queue.writeBuffer(this._terrainUniformBuffer, 0, this._terrainUniformData);
+        this._terrainBindGroup = this._renderer.device.createBindGroup({
+            label: 'Building terrain height bind group',
+            layout: this._terrainBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this._terrainUniformBuffer } },
+                { binding: 1, resource: this._dummyTerrainTexture.createView() },
+            ],
+        });
     }
 
     /**

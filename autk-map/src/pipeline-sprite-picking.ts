@@ -177,9 +177,9 @@ export class PipelineSpritePicking extends Pipeline {
         });
     }
 
-    renderPass(camera: Camera, _passEncoder?: GPURenderPassEncoder): void {
-        const commandEncoder = this._renderer.commandEncoder;
-        const passEncoder = commandEncoder.beginRenderPass({
+    renderPass(camera: Camera, passEncoder?: GPURenderPassEncoder): void {
+        const ownsPass = !passEncoder;
+        passEncoder ??= this._renderer.commandEncoder.beginRenderPass({
             colorAttachments: [this._renderer.pickingBuffer],
             depthStencilAttachment: this._renderer.pickingDepthBuffer,
         });
@@ -195,6 +195,8 @@ export class PipelineSpritePicking extends Pipeline {
         if (indexCount > 0 && this._instanceBuffer.size > 0) {
             passEncoder.drawIndexed(indexCount, this._instanceBuffer.size / (2 * Float32Array.BYTES_PER_ELEMENT));
         }
-        passEncoder.end();
+        if (ownsPass) {
+            passEncoder.end();
+        }
     }
 }

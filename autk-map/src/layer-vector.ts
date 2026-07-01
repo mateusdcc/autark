@@ -338,9 +338,9 @@ export abstract class VectorLayer extends Layer {
      * @param camera Camera providing the current view and projection state.
      * @returns Issues draw commands for the off-screen picking pass.
      */
-    renderPickingPass(camera: Camera): void {
+    renderPickingPass(camera: Camera, passEncoder?: GPURenderPassEncoder): void {
         this._pipelinePicking.updateZIndex(this._layerInfo.zIndex);
-        this._pipelinePicking.renderPass(camera);
+        this._pipelinePicking.renderPass(camera, passEncoder);
     }
 
     /**

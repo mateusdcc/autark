@@ -84,9 +84,13 @@ export class Renderer {
     private _overlayTexture?: GPUTexture;
     private _overlayMultisampleTexture?: GPUTexture;
     private _overlayDepthTexture?: GPUTexture;
+    private _overlayPickingTexture?: GPUTexture;
+    private _overlayPickingDepthTexture?: GPUTexture;
     private _overlayTextureView?: GPUTextureView;
     private _overlayMultisampleTextureView?: GPUTextureView;
     private _overlayDepthTextureView?: GPUTextureView;
+    private _overlayPickingTextureView?: GPUTextureView;
+    private _overlayPickingDepthTextureView?: GPUTextureView;
     private _overlayWidth = 0;
     private _overlayHeight = 0;
     private _terrainDepthTexture?: GPUTexture;
@@ -212,6 +216,13 @@ export class Renderer {
             throw new Error('Overlay texture has not been configured.');
         }
         return this._overlayTextureView;
+    }
+
+    get overlayPickingTextureView(): GPUTextureView {
+        if (!this._overlayPickingTextureView) {
+            throw new Error('Overlay picking texture has not been configured.');
+        }
+        return this._overlayPickingTextureView;
     }
 
     /**
@@ -560,6 +571,8 @@ export class Renderer {
         this._overlayTexture?.destroy();
         this._overlayMultisampleTexture?.destroy();
         this._overlayDepthTexture?.destroy();
+        this._overlayPickingTexture?.destroy();
+        this._overlayPickingDepthTexture?.destroy();
         this._overlayWidth = width;
         this._overlayHeight = height;
 
@@ -583,9 +596,23 @@ export class Renderer {
             format: 'depth32float',
             usage: GPUTextureUsage.RENDER_ATTACHMENT,
         });
+        this._overlayPickingTexture = this._device.createTexture({
+            label: 'Terrain overlay picking texture',
+            size: [width, height],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this._overlayPickingDepthTexture = this._device.createTexture({
+            label: 'Terrain overlay picking depth texture',
+            size: [width, height],
+            format: 'depth32float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        });
         this._overlayTextureView = this._overlayTexture.createView();
         this._overlayMultisampleTextureView = this._overlayMultisampleTexture.createView();
         this._overlayDepthTextureView = this._overlayDepthTexture.createView();
+        this._overlayPickingTextureView = this._overlayPickingTexture.createView();
+        this._overlayPickingDepthTextureView = this._overlayPickingDepthTexture.createView();
         return true;
     }
 
@@ -607,6 +634,30 @@ export class Renderer {
             ],
             depthStencilAttachment: {
                 view: this._overlayDepthTextureView,
+                depthClearValue: 0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
+    }
+
+    beginOverlayPickingRenderPass(): GPURenderPassEncoder {
+        if (!this._overlayPickingTextureView || !this._overlayPickingDepthTextureView) {
+            throw new Error('Renderer overlay picking pass requested before overlay texture configuration.');
+        }
+
+        return this.commandEncoder.beginRenderPass({
+            label: 'Terrain overlay picking render pass',
+            colorAttachments: [
+                {
+                    view: this._overlayPickingTextureView,
+                    clearValue: { r: 0, g: 0, b: 0, a: 1 },
+                    loadOp: 'clear',
+                    storeOp: 'store',
+                },
+            ],
+            depthStencilAttachment: {
+                view: this._overlayPickingDepthTextureView,
                 depthClearValue: 0,
                 depthLoadOp: 'clear',
                 depthStoreOp: 'store',
@@ -638,6 +689,7 @@ export class Renderer {
         }
 
         this._pickingBuffer.loadOp = 'clear';
+        this._pickingDepthBuffer.depthLoadOp = 'clear';
 
         const renderPassDesc: GPURenderPassDescriptor = {
             colorAttachments: [this._pickingBuffer],
@@ -646,6 +698,37 @@ export class Renderer {
 
         this._beginFrame();
         this._beginEmptyRenderPass(renderPassDesc);
+    }
+
+    beginPickingRenderPass(depthLoadOp: GPULoadOp = 'clear'): GPURenderPassEncoder {
+        if (!this._isInitialized) {
+            throw new Error('Renderer picking pass requested before initialization.');
+        }
+
+        this._pickingBuffer.loadOp = 'clear';
+        this._pickingDepthBuffer.depthLoadOp = depthLoadOp;
+
+        return this.commandEncoder.beginRenderPass({
+            colorAttachments: [this._pickingBuffer],
+            depthStencilAttachment: this._pickingDepthBuffer,
+        });
+    }
+
+    beginPickingDepthRenderPass(): GPURenderPassEncoder {
+        if (!this._isInitialized) {
+            throw new Error('Renderer picking depth pass requested before initialization.');
+        }
+
+        return this.commandEncoder.beginRenderPass({
+            label: 'Picking depth render pass',
+            colorAttachments: [],
+            depthStencilAttachment: {
+                view: this._pickingDepthBuffer.view,
+                depthClearValue: 0,
+                depthLoadOp: 'clear',
+                depthStoreOp: 'store',
+            },
+        });
     }
 
     /**
@@ -767,6 +850,8 @@ export class Renderer {
         this._overlayTexture?.destroy();
         this._overlayMultisampleTexture?.destroy();
         this._overlayDepthTexture?.destroy();
+        this._overlayPickingTexture?.destroy();
+        this._overlayPickingDepthTexture?.destroy();
         this._terrainDepthTexture?.destroy();
         this._pickReadbackBuffers.forEach((slot) => slot.buffer?.destroy());
         this._context?.unconfigure();

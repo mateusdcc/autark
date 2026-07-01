@@ -149,11 +149,11 @@ export class SpriteLayer extends Layer {
         this._pipeline.renderPass(camera, passEncoder);
     }
 
-    override renderPickingPass(camera: Camera): void {
+    override renderPickingPass(camera: Camera, passEncoder?: GPURenderPassEncoder): void {
         const scale = Math.min(Math.max(camera.getZoomScale(), 0.75), 6.0);
         this._pipelinePicking.updateZIndex(this._layerInfo.zIndex);
         this._pipelinePicking.updatePointSize(this._pointSize * scale);
-        this._pipelinePicking.renderPass(camera);
+        this._pipelinePicking.renderPass(camera, passEncoder);
     }
 
     toggleHighlightedIds(ids: number[]): void {

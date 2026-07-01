@@ -82,6 +82,14 @@ import type { TerrainSource } from './terrain-source';
 
 const TERRAIN_OVERLAY_TEXTURE_SIZE = 4096;
 
+type PickableLayer = VectorLayer | SpriteLayer;
+type PendingPick = {
+    layer: Layer;
+    pickableLayer: PickableLayer;
+    x: number;
+    y: number;
+};
+
 /**
  * Main map controller for rendering, interaction, and layer lifecycle.
  *
@@ -773,6 +781,7 @@ export class AutkMap {
             this._renderer.sampleCount,
             this._terrainSource,
             this._renderer.overlayTextureView,
+            this._renderer.overlayPickingTextureView,
         );
     }
 
@@ -792,6 +801,11 @@ export class AutkMap {
     }
 
     disableTerrainMode(): void {
+        this._layerManager.layers.forEach((layer) => {
+            if (layer instanceof Triangles3DLayer) {
+                layer.clearTerrainHeightSource();
+            }
+        });
         this._terrainRenderer?.destroy();
         this._terrainRenderer = null;
         this._terrainSource = null;
@@ -975,16 +989,7 @@ export class AutkMap {
             return;
         }
 
-        const activePickingLayer = this.activePickingLayer;
-        const pendingPick = activePickingLayer
-            && !activePickingLayer.layerRenderInfo.isSkip
-            && activePickingLayer.layerRenderInfo.pickedComps
-            ? (() => {
-                const [x, y] = activePickingLayer.layerRenderInfo.pickedComps!;
-                activePickingLayer.layerRenderInfo.pickedComps = undefined;
-                return { layer: activePickingLayer, vectorLayer: activePickingLayer as VectorLayer, x, y };
-            })()
-            : null;
+        const pendingPick = this.consumePendingPick();
 
         // Normal render pass
         this._renderer.start();
@@ -1018,31 +1023,11 @@ export class AutkMap {
         if (pendingPick) {
             this._renderer.startPickingRenderPass();
             pendingPick.layer.renderPickingPass(this._camera);
-
-            pickReadbackSlot = this._renderer.reservePickingReadbackSlot(1);
-            if (pickReadbackSlot === null) {
-                console.warn('Picking readback buffers are still busy; skipping this picking frame.');
-            } else {
-                this._renderer.enqueuePickingReadback(pickReadbackSlot, 0, pendingPick.x, pendingPick.y);
-            }
+            pickReadbackSlot = this.enqueuePickingReadback(pendingPick);
         }
 
         this._renderer.finish();
-
-        if (pickReadbackSlot !== null && pendingPick) {
-            this._renderer.readPickingResults(pickReadbackSlot, 1).then((ids) => {
-                const id = ids[0] ?? -1;
-                const { layer, vectorLayer } = pendingPick;
-
-                if (id >= 0) {
-                    vectorLayer.toggleHighlightedIds([id]);
-                    this._mapEvents.emit(MapEvent.PICKING, { selection: vectorLayer.highlightedIds, layerId: layer.layerInfo.id });
-                } else {
-                    layer.clearHighlightedIds();
-                    this._mapEvents.emit(MapEvent.PICKING, { selection: [], layerId: layer.layerInfo.id });
-                }
-            });
-        }
+        this.resolvePickingReadback(pendingPick, pickReadbackSlot);
     }
 
     private _renderTerrainFrame(): void {
@@ -1064,6 +1049,7 @@ export class AutkMap {
         if (!activeTerrain) {
             return;
         }
+        const pendingPick = this.consumePendingPick();
         const fallbackBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
         const waterColor = this.getTerrainWaterColor();
         activeTerrain.update(this._camera, fallbackBounds, [0, 0, 1, 1], waterColor, this._terrainDebug);
@@ -1153,8 +1139,90 @@ export class AutkMap {
             );
             buildingCompositePass.end();
         }
+        const pickReadbackSlot = this.renderTerrainPickingPass(pendingPick, activeTerrain, overlayPixelRect);
         this._renderer.finish();
+        this.resolvePickingReadback(pendingPick, pickReadbackSlot);
         activeTerrain.resolveVisibleBoundsReadback();
+    }
+
+    private consumePendingPick(): PendingPick | null {
+        const activePickingLayer = this.activePickingLayer;
+        if (!activePickingLayer || activePickingLayer.layerRenderInfo.isSkip || !activePickingLayer.layerRenderInfo.pickedComps) {
+            return null;
+        }
+
+        const [x, y] = activePickingLayer.layerRenderInfo.pickedComps;
+        activePickingLayer.layerRenderInfo.pickedComps = undefined;
+
+        if (!(activePickingLayer instanceof VectorLayer) && !(activePickingLayer instanceof SpriteLayer)) {
+            activePickingLayer.clearHighlightedIds();
+            return null;
+        }
+
+        return { layer: activePickingLayer, pickableLayer: activePickingLayer, x, y };
+    }
+
+    private enqueuePickingReadback(pendingPick: PendingPick): number | null {
+        const pickReadbackSlot = this._renderer.reservePickingReadbackSlot(1);
+        if (pickReadbackSlot === null) {
+            console.warn('Picking readback buffers are still busy; skipping this picking frame.');
+            return null;
+        }
+
+        this._renderer.enqueuePickingReadback(pickReadbackSlot, 0, pendingPick.x, pendingPick.y);
+        return pickReadbackSlot;
+    }
+
+    private resolvePickingReadback(pendingPick: PendingPick | null, pickReadbackSlot: number | null): void {
+        if (pickReadbackSlot === null || !pendingPick) {
+            return;
+        }
+
+        this._renderer.readPickingResults(pickReadbackSlot, 1).then((ids) => {
+            const id = ids[0] ?? -1;
+            const { layer, pickableLayer } = pendingPick;
+
+            if (id >= 0) {
+                pickableLayer.toggleHighlightedIds([id]);
+                this._mapEvents.emit(MapEvent.PICKING, { selection: pickableLayer.highlightedIds, layerId: layer.layerInfo.id });
+            } else {
+                layer.clearHighlightedIds();
+                this._mapEvents.emit(MapEvent.PICKING, { selection: [], layerId: layer.layerInfo.id });
+            }
+        });
+    }
+
+    private renderTerrainPickingPass(
+        pendingPick: PendingPick | null,
+        activeTerrain: TerrainRenderer,
+        overlayPixelRect: { x: number; y: number; width: number; height: number },
+    ): number | null {
+        if (!pendingPick) {
+            return null;
+        }
+
+        if (pendingPick.layer instanceof Triangles3DLayer) {
+            const terrainDepthPass = this._renderer.beginPickingDepthRenderPass();
+            activeTerrain.renderDepth(terrainDepthPass);
+            terrainDepthPass.end();
+
+            const buildingPickingPass = this._renderer.beginPickingRenderPass('load');
+            pendingPick.layer.setTerrainHeightSource(activeTerrain.terrainSource, activeTerrain.terrainHeightTextureView);
+            pendingPick.layer.renderPickingPass(this._camera, buildingPickingPass);
+            buildingPickingPass.end();
+            return this.enqueuePickingReadback(pendingPick);
+        }
+
+        const overlayPickingPass = this._renderer.beginOverlayPickingRenderPass();
+        overlayPickingPass.setViewport(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height, 0, 1);
+        overlayPickingPass.setScissorRect(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height);
+        pendingPick.layer.renderPickingPass(this._terrainOverlayCamera, overlayPickingPass);
+        overlayPickingPass.end();
+
+        const terrainPickingPass = this._renderer.beginPickingRenderPass();
+        activeTerrain.renderPicking(terrainPickingPass);
+        terrainPickingPass.end();
+        return this.enqueuePickingReadback(pendingPick);
     }
 
     // private logTerrainOverlayBounds(params: {

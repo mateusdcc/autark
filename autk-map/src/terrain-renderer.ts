@@ -1,5 +1,6 @@
 import type { Camera } from '@urban-toolkit/autk-core';
 import terrainFragmentSource from './shaders/terrain.frag.wgsl';
+import terrainPickingFragmentSource from './shaders/terrain-picking.frag.wgsl';
 import terrainVertexSource from './shaders/terrain.vert.wgsl';
 import terrainBoundsReduceSource from './shaders/terrain-bounds-reduce.comp.wgsl';
 import type { TerrainSource } from './terrain-source';
@@ -57,12 +58,14 @@ export class TerrainRenderer {
     private readonly pipeline: GPURenderPipeline;
     private readonly depthPipeline: GPURenderPipeline;
     private readonly meshPipeline: GPURenderPipeline;
+    private readonly pickingPipeline: GPURenderPipeline;
     private readonly boundsPipeline: GPURenderPipeline;
     private readonly visibleBoundsPipeline: GPURenderPipeline;
     private readonly reduceTexturePipeline: GPUComputePipeline;
     private readonly reduceBufferPipeline: GPUComputePipeline;
     private readonly cameraBuffer: GPUBuffer;
     private readonly bindGroup: GPUBindGroup;
+    private readonly pickingBindGroup: GPUBindGroup;
     private readonly instanceBuffer: GPUBuffer;
     private readonly boundsVertexBuffer: GPUBuffer;
     private readonly heightTexture: GPUTexture;
@@ -96,6 +99,7 @@ export class TerrainRenderer {
         sampleCount: number,
         private readonly source: TerrainSource,
         overlayTextureView: GPUTextureView,
+        overlayPickingTextureView: GPUTextureView,
     ) {
         this.bounds = source.bounds;
         this.mesh = createPatchMesh(device);
@@ -179,9 +183,20 @@ export class TerrainRenderer {
                 { binding: 3, resource: overlayTextureView },
             ],
         });
+        this.pickingBindGroup = device.createBindGroup({
+            label: 'Terrain picking bind group',
+            layout: bindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.cameraBuffer } },
+                { binding: 1, resource: this.heightTextureView },
+                { binding: 2, resource: overlaySampler },
+                { binding: 3, resource: overlayPickingTextureView },
+            ],
+        });
 
         const vertexShaderModule = device.createShaderModule({ label: 'Terrain vertex shader', code: terrainVertexSource });
         const fragmentShaderModule = device.createShaderModule({ label: 'Terrain fragment shader', code: terrainFragmentSource });
+        const pickingFragmentShaderModule = device.createShaderModule({ label: 'Terrain picking fragment shader', code: terrainPickingFragmentSource });
         const reduceShaderModule = device.createShaderModule({ label: 'Terrain bounds reduce shader', code: terrainBoundsReduceSource });
         const vertexBuffers: GPUVertexBufferLayout[] = [
             {
@@ -225,6 +240,14 @@ export class TerrainRenderer {
             primitive: { topology: 'line-list' },
             depthStencil: { depthWriteEnabled: false, depthCompare: 'greater-equal', format: depthFormat },
             multisample: { count: sampleCount },
+        });
+        this.pickingPipeline = device.createRenderPipeline({
+            label: 'LOD terrain picking pipeline',
+            layout,
+            vertex: { module: vertexShaderModule, entryPoint: 'vertexMain', buffers: vertexBuffers },
+            fragment: { module: pickingFragmentShaderModule, entryPoint: 'pickingFragmentMain', targets: [{ format: 'rgba8unorm' }] },
+            primitive: { topology: 'triangle-list', cullMode: 'none' },
+            depthStencil: { depthWriteEnabled: true, depthCompare: 'greater-equal', format: 'depth32float' },
         });
         this.boundsPipeline = device.createRenderPipeline({
             label: 'Terrain overlay bounds debug pipeline',
@@ -392,6 +415,19 @@ export class TerrainRenderer {
         pass.setVertexBuffer(0, this.mesh.vertexBuffer);
         pass.setVertexBuffer(1, this.instanceBuffer);
         pass.setPipeline(this.depthPipeline);
+        pass.setIndexBuffer(this.mesh.indexBuffer, 'uint32');
+        pass.drawIndexed(this.mesh.indexCount, this.instanceCount);
+    }
+
+    renderPicking(pass: GPURenderPassEncoder): void {
+        if (this.instanceCount === 0) {
+            return;
+        }
+
+        pass.setBindGroup(0, this.pickingBindGroup);
+        pass.setVertexBuffer(0, this.mesh.vertexBuffer);
+        pass.setVertexBuffer(1, this.instanceBuffer);
+        pass.setPipeline(this.pickingPipeline);
         pass.setIndexBuffer(this.mesh.indexBuffer, 'uint32');
         pass.drawIndexed(this.mesh.indexCount, this.instanceCount);
     }

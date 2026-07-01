@@ -188,10 +188,12 @@ export class Triangles3DLayer extends VectorLayer {
 
     setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
         (this._pipeline as PipelineBuildingSSAO).setTerrainHeightSource(source, heightTextureView);
+        this._pipelinePicking.setTerrainHeightSource(source, heightTextureView);
     }
 
     clearTerrainHeightSource(): void {
         (this._pipeline as PipelineBuildingSSAO).clearTerrainHeightSource();
+        this._pipelinePicking.clearTerrainHeightSource();
     }
 
     /**

@@ -47,7 +47,7 @@ export class TerrainLayersNiteroi {
 
         await this.map.init();
         await this.loadLayers();
-        this.map.updateRenderInfo(ELEVATION_LAYER_ID, { isColorMap: true, opacity: 0.55 });
+        // this.map.updateRenderInfo(ELEVATION_LAYER_ID, { isColorMap: true, opacity: 0.55 });
         const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
         this.map.enableTerrainMode(elevation, 'band_1');
         // this.map.updateTerrainDebug({
