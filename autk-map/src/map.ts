@@ -74,6 +74,7 @@ import { SpriteLayer } from './layer-sprite';
 import { PipelineBuildingSSAO } from './pipeline-triangle-ssao';
 
 import { AutkMapUi } from './map-ui';
+import { MapStyle } from './map-style';
 import { TerrainRenderer } from './terrain-renderer';
 import type { TerrainDebugOptions } from './terrain-renderer';
 import { terrainSourceFromRaster } from './terrain-source';
@@ -1064,7 +1065,8 @@ export class AutkMap {
             return;
         }
         const fallbackBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
-        activeTerrain.update(this._camera, fallbackBounds, [0, 0, 1, 1], this._terrainDebug);
+        const waterColor = this.getTerrainWaterColor();
+        activeTerrain.update(this._camera, fallbackBounds, [0, 0, 1, 1], waterColor, this._terrainDebug);
         const reducedBounds = activeTerrain.visibleBounds;
         const overlayBounds = reducedBounds && this.isUsableTerrainOverlayBounds(reducedBounds, fallbackBounds, activeTerrain.bounds)
             ? reducedBounds
@@ -1111,7 +1113,7 @@ export class AutkMap {
         });
         overlayPass.end();
 
-        activeTerrain.update(this._camera, overlayBounds, overlayUvRect, this._terrainDebug);
+        activeTerrain.update(this._camera, overlayBounds, overlayUvRect, waterColor, this._terrainDebug);
         const terrainPass = this._renderer.beginMainRenderPass();
         activeTerrain.render(terrainPass, this._terrainDebug.showMesh);
         if (this._frozenTerrainOverlayBounds) {
@@ -1182,6 +1184,11 @@ export class AutkMap {
     //         cameraLookAt: this._camera.getLookAt(),
     //     });
     // }
+
+    private getTerrainWaterColor(): [number, number, number] {
+        const color = MapStyle.getColor('water');
+        return [color.r / 255, color.g / 255, color.b / 255];
+    }
 
     private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
         const points: Array<[number, number]> = [];

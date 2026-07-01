@@ -7,6 +7,7 @@ struct CameraUniform {
   heightDims: vec4<f32>,
   overlayBounds: vec4<f32>,
   overlayUvRect: vec4<f32>,
+  waterColor: vec4<f32>,
 };
 
 struct VertexOutput {

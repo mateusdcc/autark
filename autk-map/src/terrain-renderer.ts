@@ -101,7 +101,7 @@ export class TerrainRenderer {
         this.mesh = createPatchMesh(device);
         this.cameraBuffer = device.createBuffer({
             label: 'Terrain camera uniform buffer',
-            size: 176,
+            size: 192,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
         this.instanceBuffer = device.createBuffer({
@@ -327,9 +327,10 @@ export class TerrainRenderer {
         camera: Camera,
         overlayBounds: readonly [number, number, number, number],
         overlayUvRect: readonly [number, number, number, number],
+        waterColor: readonly [number, number, number],
         options: TerrainDebugOptions = {},
     ): void {
-        const uniform = new Float32Array(44);
+        const uniform = new Float32Array(48);
         uniform.set(camera.getViewProjectionMatrix(), 0);
         uniform.set([...camera.getEye(), 1], 16);
         uniform.set([0.42, -0.46, -0.78, 0], 20);
@@ -338,6 +339,7 @@ export class TerrainRenderer {
         uniform.set([this.source.width, this.source.height, this.source.minHeight, this.source.maxHeight], 32);
         uniform.set([overlayBounds[0], overlayBounds[1], overlayBounds[2] - overlayBounds[0], overlayBounds[3] - overlayBounds[1]], 36);
         uniform.set(overlayUvRect, 40);
+        uniform.set([waterColor[0], waterColor[1], waterColor[2], 0.08], 44);
         this.device.queue.writeBuffer(this.cameraBuffer, 0, uniform);
 
         if (!options.freezeLod || this.lastBlocks.length === 0) {

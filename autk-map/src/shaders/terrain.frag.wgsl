@@ -7,6 +7,7 @@ struct CameraUniform {
   heightDims: vec4<f32>,
   overlayBounds: vec4<f32>,
   overlayUvRect: vec4<f32>,
+  waterColor: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -53,7 +54,15 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     discard;
   }
 
-  return vec4<f32>(overlay.rgb, overlay.a);
+  let n = normalize(input.normal);
+  let l = normalize(vec3<f32>(0.35, -0.45, 0.82));
+  let diffuse = max(dot(n, l), 0.0);
+  let shade = clamp(0.74 + 0.28 * diffuse, 0.70, 1.02);
+  let unpremultipliedOverlay = overlay.rgb / max(overlay.a, 0.0001);
+  let isWater = distance(unpremultipliedOverlay, camera.waterColor.rgb) <= camera.waterColor.a;
+  let finalShade = select(shade, 1.0, isWater);
+
+  return vec4<f32>(overlay.rgb * finalShade, overlay.a);
 }
 
 @fragment
