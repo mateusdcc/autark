@@ -1,8 +1,5 @@
 import { AutkDb } from '@urban-toolkit/autk-db';
-import {
-    AutkMap,
-        MapStyle 
-} from '@urban-toolkit/autk-map';
+import { AutkMap } from '@urban-toolkit/autk-map';
 import {
     ColorMapDomainStrategy,
     ColorMapInterpolator,
@@ -24,7 +21,7 @@ export class ColormapCat {
         });
 
         this.map = new AutkMap(canvas);
-        MapStyle.setPredefinedStyle('light');
+        this.map.style.setPredefinedStyle('light');
 
         await this.map.init();
         await this.loadLayers();

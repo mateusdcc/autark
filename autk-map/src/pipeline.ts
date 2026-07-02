@@ -20,7 +20,6 @@ import {
 import type { ColorRGB } from '@urban-toolkit/autk-core';
 
 import { Renderer } from './renderer';
-import { MapStyle } from './map-style';
 
 const COLORMAP_HEIGHT = 1;
 
@@ -364,7 +363,7 @@ export abstract class Pipeline {
      * @returns RGB color consumed by the shader uniform.
      */
     protected resolveLayerColor(layer: Layer): ColorRGB {
-        return layer.layerRenderInfo.color ?? MapStyle.getColor(layer.layerInfo.typeLayer);
+        return layer.layerRenderInfo.color ?? this._renderer.style.getColor(layer.layerInfo.typeLayer);
     }
 
     /**
@@ -385,8 +384,8 @@ export abstract class Pipeline {
 
         const colors = {
             color: this.resolveLayerColor(layer),
-            highlightColor: MapStyle.getHighlightColor(),
-            invalidValueColor: MapStyle.getInvalidValueColor(),
+            highlightColor: this._renderer.style.getHighlightColor(),
+            invalidValueColor: this._renderer.style.getInvalidValueColor(),
             colorMap: ColorMap.getColorMap(
                 layer.layerRenderInfo.colormap.config.interpolator,
                 undefined,

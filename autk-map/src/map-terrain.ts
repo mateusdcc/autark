@@ -70,6 +70,8 @@ export class TerrainMapRenderPath {
         private readonly layerManager: LayerManager,
         /** Shared picking helper used before and after terrain picking passes. */
         private readonly picking: MapPickingController,
+        /** Instance-specific style used for terrain water and overlay colors. */
+        private readonly style: MapStyle,
         /** Local-space height samples used to initialize the terrain renderer. */
         private readonly heightfield: Heightfield,
     ) {
@@ -379,7 +381,7 @@ export class TerrainMapRenderPath {
      * const color = terrainPath['getTerrainWaterColor']();
      */
     private getTerrainWaterColor(): [number, number, number] {
-        const color = MapStyle.getColor('water');
+        const color = this.style.getColor('water');
         return [color.r / 255, color.g / 255, color.b / 255];
     }
 

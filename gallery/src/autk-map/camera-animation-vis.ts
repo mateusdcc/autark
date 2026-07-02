@@ -1,6 +1,6 @@
 // Common interface for all examples
 import { AutkDb } from '@urban-toolkit/autk-db';
-import { AutkMap, MapStyle } from '@urban-toolkit/autk-map';
+import { AutkMap } from '@urban-toolkit/autk-map';
 import { CameraMotion, ColorMapDomainStrategy, ColorMapInterpolator } from '@urban-toolkit/autk-core';
 import { ComputeGpgpu } from '@urban-toolkit/autk-compute';
 import { FeatureCollection, Geometry, GeoJsonProperties } from 'geojson';
@@ -214,7 +214,7 @@ class Heatmap {
         });
 
         this.map = new AutkMap(canvas);
-        MapStyle.setPredefinedStyle('light');
+        this.map.style.setPredefinedStyle('light');
         
         await this.map.init();
         await this.loadLayers();

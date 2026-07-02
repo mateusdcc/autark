@@ -1,11 +1,10 @@
 /**
  * @module MapStyle
- * Shared color-style registry and utilities for semantic map layers.
+ * Per-map color-style state and utilities for semantic map layers.
  *
  * This module defines the `MapStyle` class and related types used to manage
- * built-in and runtime-provided map styles. It centralizes validation of style
- * payloads, tracks the active semantic color set, and exposes helpers for
- * resolving style colors into the RGB values consumed by the renderer.
+ * built-in and runtime-provided map styles. Each `AutkMap` owns its own
+ * `MapStyle` instance so multiple maps can use different visual treatments.
  */
 
 import { ColorHEX, ColorRGB, ColorMap, LAYER_TYPE_VALUES } from '@urban-toolkit/autk-core';
@@ -21,7 +20,7 @@ import osm from './styles/osm.json';
 export type MapStylePresetId = 'default' | 'light' | 'google' | 'apple' | 'osm';
 
 /** Ordered preset ids used for keyboard style cycling. */
-const PRESET_IDS: readonly MapStylePresetId[] = ['default', 'light', 'google', 'apple', 'osm'];
+const PRESET_IDS: readonly MapStylePresetId[] = ['apple', 'default', 'light', 'google', 'osm'];
 /** Required keys for a valid map style object — derived from `LayerType` minus `raster`. */
 const MAP_STYLE_KEYS: Array<keyof MapStyleShape> = LAYER_TYPE_VALUES.filter(
   (l): l is Exclude<LayerType, 'raster'> => l !== 'raster',
@@ -49,30 +48,16 @@ export interface MapStyleShape {
 }
 
 /**
- * Static registry and accessor for map style presets and shared UI colors.
+ * Instance-owned map style state and semantic color resolver.
  *
- * `MapStyle` stores the active semantic style used by the map renderer, along
- * with a small set of related shared colors such as highlight and invalid-value
- * fallbacks. It also validates built-in and custom style definitions before
- * they become active, ensuring all required semantic keys are present and use
- * supported hex color formats.
+ * `MapStyle` stores the active semantic style for one map, along with related
+ * colors such as highlight and invalid-value fallbacks. Built-in and custom
+ * styles are validated before they become active.
  *
  * @example
- * MapStyle.setPredefinedStyle('light');
- *
- * const roads = MapStyle.getColor('roads');
- *
- * MapStyle.setCustomStyle({
- *   background: '#ffffff',
- *   surface: '#f2f2f2',
- *   parks: '#cfe8c8',
- *   water: '#b9dcff',
- *   roads: '#d0d0d0',
- *   buildings: '#c8c8c8',
- *   points: '#555555',
- *   polylines: '#777777',
- *   polygons: '#999999',
- * });
+ * const style = new MapStyle('apple');
+ * style.setPredefinedStyle('light');
+ * const roads = style.getColor('roads');
  */
 export class MapStyle {
     /** Built-in style presets available by id. */
@@ -84,18 +69,31 @@ export class MapStyle {
         osm: MapStyle._normalizeStyle(osm as MapStyleShape, 'osm'),
     };
 
-    /** Default style assigned during initial map startup. */
-    protected static _default: MapStyleShape = defaultStyle as MapStyleShape;
+    /** Default style assigned to new maps. */
+    protected static _defaultStyleId: MapStylePresetId = 'apple';
 
     /** Color used for invalid thematic values. */
-    protected static _invalidValue: ColorHEX = '#FFFFFF';
+    protected _invalidValue: ColorHEX = '#FFFFFF';
     /** Highlight color used for interactive selections. */
-    protected static _highlight: ColorHEX = '#5dade2';
-
+    protected _highlight: ColorHEX = '#5dade2';
     /** Currently active semantic map style. */
-    protected static _current: MapStyleShape = MapStyle._default;
+    protected _current: MapStyleShape;
     /** Identifier of the currently active style or `custom`. */
-    protected static _currentStyle: string = 'default';
+    protected _currentStyle: string;
+
+    /**
+     * Creates a style state initialized from a built-in preset.
+     *
+     * @param style Initial built-in style id. Unknown ids fall back to `apple`.
+     * @throws Never throws.
+     * @example
+     * const style = new MapStyle('apple');
+     */
+    constructor(style: string = MapStyle._defaultStyleId) {
+        const presetId: MapStylePresetId = MapStyle._isPresetId(style) ? style : MapStyle._defaultStyleId;
+        this._current = MapStyle._presets[presetId];
+        this._currentStyle = presetId;
+    }
 
     /**
      * Returns the identifier of the currently active style.
@@ -105,8 +103,13 @@ export class MapStyle {
      *
      * @returns Active style identifier.
      */
-    static get currentStyle(): string {
-        return MapStyle._currentStyle;
+    get currentStyle(): string {
+        return this._currentStyle;
+    }
+
+    /** Returns the list of built-in preset ids. */
+    get availableStyles(): MapStylePresetId[] {
+        return MapStyle.availableStyles;
     }
 
     /** Returns the list of built-in preset ids. */
@@ -121,13 +124,12 @@ export class MapStyle {
      * @returns RGB color for the requested key.
      * @throws Never throws.
      * @example
-     * const roadsColor = MapStyle.getColor('roads');
+     * const roadsColor = style.getColor('roads');
      */
-    static getColor(type: string): ColorRGB {
-        const style = MapStyle._current;
-        const hex = (Object.prototype.hasOwnProperty.call(style, type)
-            ? style[type as keyof MapStyleShape]
-            : undefined) ?? style.polygons;
+    getColor(type: string): ColorRGB {
+        const hex = (Object.prototype.hasOwnProperty.call(this._current, type)
+            ? this._current[type as keyof MapStyleShape]
+            : undefined) ?? this._current.polygons;
 
         return ColorMap.hexToRgb(hex);
     }
@@ -138,23 +140,23 @@ export class MapStyle {
      * @returns RGB fallback color.
      * @throws Never throws.
      */
-    static getInvalidValueColor(): ColorRGB {
-        return ColorMap.hexToRgb(MapStyle._invalidValue);
+    getInvalidValueColor(): ColorRGB {
+        return ColorMap.hexToRgb(this._invalidValue);
     }
 
     /**
      * Applies one of the built-in map style presets.
      *
-     * @param style Preset identifier. Unknown ids fall back to `default`.
+     * @param style Preset identifier. Unknown ids fall back to `apple`.
      * @returns Nothing.
      * @throws Never throws.
      * @example
-     * MapStyle.setPredefinedStyle('light');
+     * style.setPredefinedStyle('light');
      */
-    static setPredefinedStyle(style: string): void {
-        const presetId: MapStylePresetId = MapStyle._isPresetId(style) ? style : 'default';
-        MapStyle._current = MapStyle._presets[presetId];
-        MapStyle._currentStyle = presetId;
+    setPredefinedStyle(style: string): void {
+        const presetId: MapStylePresetId = MapStyle._isPresetId(style) ? style : MapStyle._defaultStyleId;
+        this._current = MapStyle._presets[presetId];
+        this._currentStyle = presetId;
     }
 
     /**
@@ -164,11 +166,11 @@ export class MapStyle {
      * @returns Nothing. The style id becomes `custom`.
      * @throws If the style is missing required keys or has invalid hex color values.
      * @example
-     * MapStyle.setCustomStyle({ background: '#fff', surface: '#eee', parks: '#cfc', water: '#bdf', roads: '#ddd', buildings: '#ccc', points: '#555', polylines: '#777', polygons: '#999' });
+     * style.setCustomStyle({ background: '#fff', surface: '#eee', parks: '#cfc', water: '#bdf', roads: '#ddd', buildings: '#ccc', points: '#555', polylines: '#777', polygons: '#999' });
      */
-    static setCustomStyle(style: MapStyleShape): void {
-        MapStyle._current = MapStyle._normalizeStyle(style, 'custom');
-        MapStyle._currentStyle = 'custom';
+    setCustomStyle(style: MapStyleShape): void {
+        this._current = MapStyle._normalizeStyle(style, 'custom');
+        this._currentStyle = 'custom';
     }
 
     /**
@@ -177,30 +179,30 @@ export class MapStyle {
      * @returns RGB highlight color.
      * @throws Never throws.
      */
-    static getHighlightColor(): ColorRGB {
-        return ColorMap.hexToRgb(MapStyle._highlight);
+    getHighlightColor(): ColorRGB {
+        return ColorMap.hexToRgb(this._highlight);
     }
 
     /**
-     * Sets the highlight color (no validation).
+     * Sets the highlight color.
      *
      * @param color New highlight color in hex format.
      * @returns Nothing.
      * @throws Never throws.
      */
-    static setHighlightColor(color: ColorHEX): void {
-        MapStyle._highlight = color;
+    setHighlightColor(color: ColorHEX): void {
+        this._highlight = color;
     }
 
     /**
-     * Sets the color used for invalid thematic values (no validation).
+     * Sets the color used for invalid thematic values.
      *
      * @param color New fallback color for invalid thematic values.
      * @returns Nothing.
      * @throws Never throws.
      */
-    static setInvalidValueColor(color: ColorHEX): void {
-        MapStyle._invalidValue = color;
+    setInvalidValueColor(color: ColorHEX): void {
+        this._invalidValue = color;
     }
 
     /**

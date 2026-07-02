@@ -1,5 +1,5 @@
 import type { FeatureCollection, Feature, Geometry, GeoJsonProperties } from 'geojson';
-import { AutkMap, MapStyle, MapEvent } from '@urban-toolkit/autk-map';
+import { AutkMap, MapEvent } from '@urban-toolkit/autk-map';
 import { ColorMapInterpolator, ColorMapDomainStrategy } from '@urban-toolkit/autk-core';
 import { AutkDb } from '@urban-toolkit/autk-db';
 import { ComputeGpgpu } from '@urban-toolkit/autk-compute';
@@ -66,7 +66,7 @@ export class OsmLayersApi {
         this.map = new AutkMap(canvas);
         await this.map.init();
 
-        MapStyle.setHighlightColor(HIGHLIGHT_COLOR);
+        this.map.style.setHighlightColor(HIGHLIGHT_COLOR);
         PlotStyle.setHighlightColor(HIGHLIGHT_COLOR);
 
         setLoadingState('Rendering layers...', 'Uploading geometry to the GPU.');

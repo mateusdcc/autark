@@ -120,9 +120,14 @@ export class Renderer {
      * @param canvas Target HTML canvas.
      * @throws Never throws.
      */
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(canvas: HTMLCanvasElement, private readonly _style: MapStyle) {
         this._canvas = canvas;
         this._syncCanvasMetrics(canvas.offsetWidth || canvas.width, canvas.offsetHeight || canvas.height, window.devicePixelRatio || 1);
+    }
+
+    /** Map style used by renderer-owned passes and pipelines. */
+    get style(): MapStyle {
+        return this._style;
     }
 
     /** Underlying render canvas. */
@@ -435,7 +440,7 @@ export class Renderer {
         this._multisampleTexture = this._device.createTexture(multiSampleDesc);
         const multiSampleTextureView = this._multisampleTexture.createView();
 
-        const sky = MapStyle.getColor('background');
+        const sky = this._style.getColor('background');
         this._frameBuffer = {
             view: multiSampleTextureView,
             resolveTarget: colorTextureView,
@@ -504,7 +509,7 @@ export class Renderer {
         // Configure the frame buffer
         this._frameBuffer.loadOp = 'clear';
         this._frameBuffer.resolveTarget = currentTextureView;
-        const sky = MapStyle.getColor('background');
+        const sky = this._style.getColor('background');
         this._frameBuffer.clearValue = { r: sky.r / 255, g: sky.g / 255, b: sky.b / 255, a: 1 };
 
         this._beginFrame();

@@ -1,4 +1,3 @@
-import { ColorMapDomainStrategy, ColorMapInterpolator } from '@urban-toolkit/autk-core';
 import { AutkDb } from '@urban-toolkit/autk-db';
 import { AutkMap } from '@urban-toolkit/autk-map';
 
@@ -47,14 +46,10 @@ export class TerrainLayersNiteroi {
 
         await this.map.init();
         await this.loadLayers();
-        // this.map.updateRenderInfo(ELEVATION_LAYER_ID, { isColorMap: true, opacity: 0.55 });
+
         const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
         this.map.enableTerrainMode(elevation, 'band_1');
-        // this.map.updateTerrainDebug({
-        //     showMesh: true,
-        //     enableCulling: true,
-        //     freezeLod: false,
-        // });
+
         this.map.draw();
     }
 
@@ -68,18 +63,6 @@ export class TerrainLayersNiteroi {
             });
             console.log(`Loading layer: ${layerData.name} of type ${layerData.type}`);
         }
-        // const elevation = await this.db.getRaster(ELEVATION_LAYER_ID);
-        // this.map.loadCollection(ELEVATION_LAYER_ID, {
-        //     collection: elevation,
-        //     type: 'raster',
-        //     property: 'band_1',
-        // });
-        // this.map.updateColorMap(ELEVATION_LAYER_ID, {
-        //     colorMap: {
-        //         interpolator: ColorMapInterpolator.SEQ_TURBO,
-        //         domainSpec: { type: ColorMapDomainStrategy.PERCENTILE, params: [2, 98] },
-        //     },
-        // });
     }
 
 }

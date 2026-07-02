@@ -10,7 +10,6 @@
  */
 
 import { AutkMap } from './map';
-import { MapStyle } from './map-style';
 
 /**
  * Keyboard interaction controller for map shortcuts.
@@ -73,8 +72,8 @@ export class KeyEvents {
      * Handles keyboard shortcuts on key release.
      *
      * Currently supported shortcuts:
-     * - `s`: cycles to the next predefined map style in
-     *   `MapStyle.availableStyles`, wrapping to the first style after the last.
+     * - `s`: cycles to the next predefined map style in the owning map style,
+     *   wrapping to the first style after the last.
      *   After the style is changed, every existing layer is marked render-info
      *   dirty so style-dependent rendering state is refreshed.
      *
@@ -85,11 +84,11 @@ export class KeyEvents {
      */
     keyUp(event: KeyboardEvent) {
         if (event.key.toLowerCase() === 's') {
-            const styles: string[] = MapStyle.availableStyles;
-            const current = MapStyle.currentStyle;
+            const styles: string[] = this._map.style.availableStyles;
+            const current = this._map.style.currentStyle;
 
             const id = (styles.indexOf(current) + 1) % styles.length;
-            MapStyle.setPredefinedStyle(styles[id]);
+            this._map.style.setPredefinedStyle(styles[id]);
 
             for (const layer of this._map.layerManager.layers) {
                 layer.makeLayerRenderInfoDirty();

@@ -71,6 +71,7 @@ import { VectorLayer } from './layer-vector';
 import { RasterLayer } from './layer-raster';
 import { SpriteLayer } from './layer-sprite';
 import { AutkMapUi } from './map-ui';
+import { MapStyle } from './map-style';
 import { FlatMapRenderPath } from './map-flat';
 import { MapPickingController } from './map-picking';
 import { TerrainMapRenderPath } from './map-terrain';
@@ -96,6 +97,8 @@ export class AutkMap {
     protected _camera!: Camera;
     /** WebGPU renderer. */
     protected _renderer!: Renderer;
+    /** Instance-specific semantic map style. */
+    protected _style!: MapStyle;
     /** Manages the ordered layer stack. */
     protected _layerManager!: LayerManager;
 
@@ -133,7 +136,8 @@ export class AutkMap {
      */
     constructor(canvas: HTMLCanvasElement) {
         this._canvas = canvas;
-        this._renderer = new Renderer(canvas);
+        this._style = new MapStyle();
+        this._renderer = new Renderer(canvas, this._style);
 
         this._camera = new Camera();
         this._layerManager = new LayerManager();
@@ -151,6 +155,11 @@ export class AutkMap {
     /** View and projection camera. */
     get camera(): Camera {
         return this._camera;
+    }
+
+    /** Instance-specific semantic map style. */
+    get style(): MapStyle {
+        return this._style;
     }
 
     /** WebGPU renderer. */
@@ -757,6 +766,7 @@ export class AutkMap {
             this._camera,
             this._layerManager,
             this._picking,
+            this._style,
             heightfield,
         );
     }
