@@ -1,6 +1,6 @@
 {
   "name": "@urban-toolkit/autk-compute",
-  "version": "2.4.0",
+  "version": "3.0.0",
   "keywords": [
     "urban",
     "data management",
@@ -34,7 +34,7 @@
     "doc": "typedoc --options typedoc.json"
   },
   "dependencies": {
-    "@urban-toolkit/autk-core": "2.3.0"
+    "@urban-toolkit/autk-core": "3.0.0"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",
