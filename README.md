@@ -13,11 +13,12 @@
 </div>
 <br>
 
-Autark provides a client-side platform for implementing urban visual analytics software, including WebGPU-accelerated terrain rendering for visualizing elevation-aware urban scenes. It supports loading, storing, querying, joining, and exporting physical and thematic urban data using standard formats such as OpenStreetMap, GeoJSON, and GeoTIFF. By using GPU acceleration, Autark enables sophisticated urban analyses such as shadow and visibility analysis, as well as classic machine learning algorithms such as regression and clustering. Finally, it provides a collection of interactive plots and 2D, 3D, and terrain-aware maps for visualizing urban data.
-
 <p align="center">
   <img src="./nit.png" alt="Autark terrain rendering in Niterói" width="600" style="border-radius: 12px;" />
 </p>
+
+
+Autark provides a client-side platform for implementing urban visual analytics software, including WebGPU-accelerated terrain rendering for visualizing elevation-aware urban scenes. It supports loading, storing, querying, joining, and exporting physical and thematic urban data using standard formats such as OpenStreetMap, GeoJSON, and GeoTIFF. By using GPU acceleration, Autark enables sophisticated urban analyses such as shadow and visibility analysis, as well as classic machine learning algorithms such as regression and clustering. Finally, it provides a collection of interactive plots and 2D, 3D, and terrain-aware maps for visualizing urban data.
 
 Autark is available as a single package or as individual modules:
 
