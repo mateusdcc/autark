@@ -107,6 +107,9 @@ export type {
 } from './triangulator-windows';
 /** Triangulates raster cells into renderable grid geometry. */
 export { TriangulatorRaster }    from './triangulator-raster';
+/** Builds terrain heightfields from raster feature collections. */
+export { heightfieldFromRaster } from './heightfield';
+export type { Heightfield } from './heightfield';
 
 /** Camera primitives and motion utilities for map navigation. */
 // ─── Camera ──────────────────────────────────────────────────────────────────

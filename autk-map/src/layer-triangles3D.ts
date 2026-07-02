@@ -23,7 +23,7 @@ import { Renderer } from './renderer';
 
 import { PipelineBuildingSSAO } from './pipeline-triangle-ssao';
 import { PipelineTrianglePicking } from './pipeline-triangle-picking';
-import type { TerrainSource } from './terrain-source';
+import type { Heightfield } from '@urban-toolkit/autk-core';
 
 /**
  * 3D indexed-triangle layer with derived lighting normals.
@@ -186,11 +186,29 @@ export class Triangles3DLayer extends VectorLayer {
         (this._pipeline as PipelineBuildingSSAO).renderGeometryPass(camera, passEncoder);
     }
 
-    setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
+    /**
+     * Binds a heightfield to the 3D render and picking pipelines.
+     *
+     * @param source Heightfield sampled to offset 3D geometry in terrain mode.
+     * @param heightTextureView GPU texture view containing heightfield samples.
+     * @returns Nothing. Subsequent render and picking passes use terrain heights.
+     * @throws Never throws.
+     * @example
+     * layer.setTerrainHeightSource(heightfield, terrainHeightTextureView);
+     */
+    setTerrainHeightSource(source: Heightfield, heightTextureView: GPUTextureView): void {
         (this._pipeline as PipelineBuildingSSAO).setTerrainHeightSource(source, heightTextureView);
         this._pipelinePicking.setTerrainHeightSource(source, heightTextureView);
     }
 
+    /**
+     * Clears terrain height bindings from the 3D render and picking pipelines.
+     *
+     * @returns Nothing. Subsequent passes use the dummy flat height source.
+     * @throws Never throws.
+     * @example
+     * layer.clearTerrainHeightSource();
+     */
     clearTerrainHeightSource(): void {
         (this._pipeline as PipelineBuildingSSAO).clearTerrainHeightSource();
         this._pipelinePicking.clearTerrainHeightSource();

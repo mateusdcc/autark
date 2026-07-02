@@ -81,21 +81,37 @@ export class Renderer {
     protected _pixelHeight: number = 1;
     /** Device pixel ratio used to derive backing-store size. */
     protected _devicePixelRatio: number = 1;
+    /** Color texture containing 2D layer output projected onto terrain. */
     private _overlayTexture?: GPUTexture;
+    /** Multisampled color texture resolved into `_overlayTexture`. */
     private _overlayMultisampleTexture?: GPUTexture;
+    /** Depth texture used while rendering terrain overlay layers. */
     private _overlayDepthTexture?: GPUTexture;
+    /** Picking id texture containing overlay-layer picking output. */
     private _overlayPickingTexture?: GPUTexture;
+    /** Depth texture used while rendering overlay picking ids. */
     private _overlayPickingDepthTexture?: GPUTexture;
+    /** View for the resolved terrain overlay color texture. */
     private _overlayTextureView?: GPUTextureView;
+    /** View for the multisampled terrain overlay color texture. */
     private _overlayMultisampleTextureView?: GPUTextureView;
+    /** View for the terrain overlay depth texture. */
     private _overlayDepthTextureView?: GPUTextureView;
+    /** View for the terrain overlay picking texture. */
     private _overlayPickingTextureView?: GPUTextureView;
+    /** View for the terrain overlay picking depth texture. */
     private _overlayPickingDepthTextureView?: GPUTextureView;
+    /** Current terrain overlay texture width in pixels. */
     private _overlayWidth = 0;
+    /** Current terrain overlay texture height in pixels. */
     private _overlayHeight = 0;
+    /** Depth texture used to composite 3D layers against terrain. */
     private _terrainDepthTexture?: GPUTexture;
+    /** View for the terrain composite depth texture. */
     private _terrainDepthTextureView?: GPUTextureView;
+    /** Current terrain depth texture width in pixels. */
     private _terrainDepthWidth = 0;
+    /** Current terrain depth texture height in pixels. */
     private _terrainDepthHeight = 0;
 
     /**
@@ -134,14 +150,17 @@ export class Renderer {
         return this._pixelHeight;
     }
 
+    /** Terrain overlay texture width in pixels. */
     get overlayWidth(): number {
         return this._overlayWidth;
     }
 
+    /** Terrain overlay texture height in pixels. */
     get overlayHeight(): number {
         return this._overlayHeight;
     }
 
+    /** Terrain depth texture view used by terrain-aware building compositing. */
     get terrainDepthTextureView(): GPUTextureView {
         if (!this._terrainDepthTextureView) {
             throw new Error('Terrain depth texture has not been configured.');
@@ -207,10 +226,12 @@ export class Renderer {
         return this._pickingDepthBuffer;
     }
 
+    /** Main depth texture view used by render paths that need direct sampling. */
     get depthTextureView(): GPUTextureView {
         return this._depthBuffer.view as GPUTextureView;
     }
 
+    /** Terrain overlay color texture view sampled by the terrain renderer. */
     get overlayTextureView(): GPUTextureView {
         if (!this._overlayTextureView) {
             throw new Error('Overlay texture has not been configured.');
@@ -218,6 +239,7 @@ export class Renderer {
         return this._overlayTextureView;
     }
 
+    /** Terrain overlay picking texture view sampled by terrain picking. */
     get overlayPickingTextureView(): GPUTextureView {
         if (!this._overlayPickingTextureView) {
             throw new Error('Overlay picking texture has not been configured.');
@@ -515,6 +537,15 @@ export class Renderer {
         return this.commandEncoder.beginRenderPass(renderPassDesc);
     }
 
+    /**
+     * Begins a main color-only render pass.
+     *
+     * @param loadOp Load operation for the main color attachment.
+     * @returns Render pass encoder targeting the current canvas color attachment.
+     * @throws If the renderer has not been initialized.
+     * @example
+     * const pass = renderer.beginMainColorRenderPass('load');
+     */
     beginMainColorRenderPass(loadOp: GPULoadOp = 'load'): GPURenderPassEncoder {
         if (!this._isInitialized || !this._context) {
             throw new Error('Renderer color pass requested before initialization.');
@@ -528,6 +559,16 @@ export class Renderer {
         });
     }
 
+    /**
+     * Creates or resizes the terrain composite depth texture.
+     *
+     * @param width Requested texture width in pixels.
+     * @param height Requested texture height in pixels.
+     * @returns `true` when the texture was recreated, otherwise `false`.
+     * @throws If GPU texture creation fails.
+     * @example
+     * renderer.configureTerrainDepthTexture(width, height);
+     */
     configureTerrainDepthTexture(width: number, height: number): boolean {
         if (!this._device || (this._terrainDepthTexture && width === this._terrainDepthWidth && height === this._terrainDepthHeight)) {
             return false;
@@ -546,6 +587,14 @@ export class Renderer {
         return true;
     }
 
+    /**
+     * Begins a depth-only pass for terrain compositing.
+     *
+     * @returns Render pass encoder writing to the terrain depth texture.
+     * @throws If the terrain depth texture has not been configured.
+     * @example
+     * const pass = renderer.beginTerrainDepthRenderPass();
+     */
     beginTerrainDepthRenderPass(): GPURenderPassEncoder {
         if (!this._terrainDepthTextureView) {
             throw new Error('Renderer terrain depth pass requested before terrain depth texture configuration.');
@@ -563,6 +612,16 @@ export class Renderer {
         });
     }
 
+    /**
+     * Creates or resizes terrain overlay color, depth, and picking textures.
+     *
+     * @param width Requested overlay texture width in pixels.
+     * @param height Requested overlay texture height in pixels.
+     * @returns `true` when overlay textures were recreated, otherwise `false`.
+     * @throws If GPU texture creation fails.
+     * @example
+     * renderer.configureOverlayTexture(4096, 4096);
+     */
     configureOverlayTexture(width: number, height: number): boolean {
         if (!this._device || (this._overlayTexture && width === this._overlayWidth && height === this._overlayHeight)) {
             return false;
@@ -616,6 +675,14 @@ export class Renderer {
         return true;
     }
 
+    /**
+     * Begins the terrain overlay color render pass.
+     *
+     * @returns Render pass encoder targeting the overlay color and depth textures.
+     * @throws If overlay textures have not been configured.
+     * @example
+     * const pass = renderer.beginOverlayRenderPass();
+     */
     beginOverlayRenderPass(): GPURenderPassEncoder {
         if (!this._overlayTextureView || !this._overlayMultisampleTextureView || !this._overlayDepthTextureView) {
             throw new Error('Renderer overlay pass requested before overlay texture configuration.');
@@ -641,6 +708,14 @@ export class Renderer {
         });
     }
 
+    /**
+     * Begins the terrain overlay picking render pass.
+     *
+     * @returns Render pass encoder targeting overlay picking and depth textures.
+     * @throws If overlay picking textures have not been configured.
+     * @example
+     * const pass = renderer.beginOverlayPickingRenderPass();
+     */
     beginOverlayPickingRenderPass(): GPURenderPassEncoder {
         if (!this._overlayPickingTextureView || !this._overlayPickingDepthTextureView) {
             throw new Error('Renderer overlay picking pass requested before overlay texture configuration.');
@@ -700,6 +775,15 @@ export class Renderer {
         this._beginEmptyRenderPass(renderPassDesc);
     }
 
+    /**
+     * Begins a picking render pass and returns its encoder.
+     *
+     * @param depthLoadOp Load operation for the picking depth attachment.
+     * @returns Render pass encoder targeting the main picking attachments.
+     * @throws If the renderer has not been initialized.
+     * @example
+     * const pass = renderer.beginPickingRenderPass('clear');
+     */
     beginPickingRenderPass(depthLoadOp: GPULoadOp = 'clear'): GPURenderPassEncoder {
         if (!this._isInitialized) {
             throw new Error('Renderer picking pass requested before initialization.');
@@ -714,6 +798,14 @@ export class Renderer {
         });
     }
 
+    /**
+     * Begins a depth-only pass using the picking depth attachment.
+     *
+     * @returns Render pass encoder writing only picking depth.
+     * @throws If the renderer has not been initialized.
+     * @example
+     * const pass = renderer.beginPickingDepthRenderPass();
+     */
     beginPickingDepthRenderPass(): GPURenderPassEncoder {
         if (!this._isInitialized) {
             throw new Error('Renderer picking depth pass requested before initialization.');

@@ -20,7 +20,7 @@ import { Camera } from '@urban-toolkit/autk-core';
 import { Renderer } from './renderer';
 import { Pipeline } from './pipeline';
 import { VectorLayer } from './layer-vector';
-import type { TerrainSource } from './terrain-source';
+import type { Heightfield } from '@urban-toolkit/autk-core';
 
 /**
  * Picking pipeline for triangle-based vector geometry.
@@ -52,10 +52,15 @@ export class PipelineTrianglePicking extends Pipeline {
 
     /** Vertex component count: `2` for `xy` data, `3` for `xyz` data. */
     private _dimension: number;
+    /** Uniform buffer describing the active terrain heightfield for 3D picking. */
     private _terrainUniformBuffer?: GPUBuffer;
+    /** Bind group layout for terrain height uniforms and texture sampling. */
     private _terrainBindGroupLayout?: GPUBindGroupLayout;
+    /** Bind group containing the active or dummy terrain height source. */
     private _terrainBindGroup?: GPUBindGroup;
+    /** Fallback height texture used when terrain mode is disabled. */
     private _dummyTerrainTexture?: GPUTexture;
+    /** Reused CPU-side terrain uniform upload buffer. */
     private _terrainUniformData = new Float32Array(8);
 
     /** Reused CPU-side upload buffer for positions. */
@@ -171,6 +176,14 @@ export class PipelineTrianglePicking extends Pipeline {
         });
     }
 
+    /**
+     * Creates terrain height bindings for 3D picking.
+     *
+     * @returns Nothing. A dummy flat height source is bound initially.
+     * @throws If GPU buffer, texture, or bind group creation fails.
+     * @example
+     * pipeline.createTerrainHeightBindGroup();
+     */
     createTerrainHeightBindGroup(): void {
         this._terrainUniformBuffer = this._renderer.device.createBuffer({
             label: 'Picking terrain height uniform',
@@ -201,7 +214,17 @@ export class PipelineTrianglePicking extends Pipeline {
         this.clearTerrainHeightSource();
     }
 
-    setTerrainHeightSource(source: TerrainSource, heightTextureView: GPUTextureView): void {
+    /**
+     * Binds a heightfield texture used to offset 3D picking geometry.
+     *
+     * @param source Heightfield metadata used by the vertex shader.
+     * @param heightTextureView GPU texture view containing height samples.
+     * @returns Nothing. Calls are ignored before terrain bindings are created.
+     * @throws If bind group creation fails.
+     * @example
+     * pipeline.setTerrainHeightSource(heightfield, terrainHeightTextureView);
+     */
+    setTerrainHeightSource(source: Heightfield, heightTextureView: GPUTextureView): void {
         if (!this._terrainUniformBuffer || !this._terrainBindGroupLayout) {
             return;
         }
@@ -227,6 +250,14 @@ export class PipelineTrianglePicking extends Pipeline {
         });
     }
 
+    /**
+     * Restores the dummy flat height source for 3D picking.
+     *
+     * @returns Nothing. Calls are ignored before terrain bindings are created.
+     * @throws If bind group creation fails.
+     * @example
+     * pipeline.clearTerrainHeightSource();
+     */
     clearTerrainHeightSource(): void {
         if (!this._terrainUniformBuffer || !this._terrainBindGroupLayout || !this._dummyTerrainTexture) {
             return;

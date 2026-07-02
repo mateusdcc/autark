@@ -34,13 +34,13 @@ import {
     TriangulatorPolylines,
     TriangulatorBuildings,
     TriangulatorRaster,
+    heightfieldFromRaster,
     valueAtPath,
     LayerType,
     ResolvedDomain,
     mapGeometryTypeToLayerType,
 } from '@urban-toolkit/autk-core';
 
-import { MapEvent } from './types-events';
 import type { MapEventRecord } from './types-events';
 
 import {
@@ -69,26 +69,12 @@ import { Layer } from './layer';
 import { LayerManager } from './layer-manager';
 import { VectorLayer } from './layer-vector';
 import { RasterLayer } from './layer-raster';
-import { Triangles3DLayer } from './layer-triangles3D';
 import { SpriteLayer } from './layer-sprite';
-import { PipelineBuildingSSAO } from './pipeline-triangle-ssao';
-
 import { AutkMapUi } from './map-ui';
-import { MapStyle } from './map-style';
-import { TerrainRenderer } from './terrain-renderer';
-import type { TerrainDebugOptions } from './terrain-renderer';
-import { terrainSourceFromRaster } from './terrain-source';
-import type { TerrainSource } from './terrain-source';
-
-const TERRAIN_OVERLAY_TEXTURE_SIZE = 4096;
-
-type PickableLayer = VectorLayer | SpriteLayer;
-type PendingPick = {
-    layer: Layer;
-    pickableLayer: PickableLayer;
-    x: number;
-    y: number;
-};
+import { FlatMapRenderPath } from './map-flat';
+import { MapPickingController } from './map-picking';
+import { TerrainMapRenderPath } from './map-terrain';
+import type { TerrainDebugOptions } from './renderer-terrain';
 
 /**
  * Main map controller for rendering, interaction, and layer lifecycle.
@@ -132,17 +118,12 @@ export class AutkMap {
     protected _isDestroyed: boolean = false;
     /** Set after the first render-loop error to deduplicate repeated frame failures. */
     protected _renderErrorLogged: boolean = false;
-    private _terrainRenderer: TerrainRenderer | null = null;
-    private _terrainSource: TerrainSource | null = null;
-    private _frozenTerrainOverlayBounds: [number, number, number, number] | null = null;
-    private _frozenTerrainCameraPosition: [number, number] | null = null;
-    // private _lastTerrainBoundsLogTime = 0;
-    private readonly _terrainOverlayCamera: Camera = new Camera();
-    private _terrainDebug: Required<TerrainDebugOptions> = {
-        showMesh: false,
-        enableCulling: true,
-        freezeLod: false,
-    };
+    /** Flat render path used when terrain mode is disabled. */
+    private _flatRenderPath!: FlatMapRenderPath;
+    /** Active terrain render path, or `null` while using flat rendering. */
+    private _terrainRenderPath: TerrainMapRenderPath | null = null;
+    /** Shared picking coordinator used by both render paths. */
+    private _picking!: MapPickingController;
 
     /**
      * Creates an AutkMap instance bound to a canvas element.
@@ -161,6 +142,8 @@ export class AutkMap {
         this._mouseEvents = new MouseEvents(this);
         this._resizeEvents = new ResizeEvents(this);
         this._mapEvents = new EventEmitter<MapEventRecord>();
+        this._picking = new MapPickingController(this._renderer, this._layerManager, this._mapEvents);
+        this._flatRenderPath = new FlatMapRenderPath(this._renderer, this._camera, this._layerManager, this._picking);
 
         this._ui = new AutkMapUi(this);
     }
@@ -749,99 +732,95 @@ export class AutkMap {
         layer.clearSkippedIds();
     }
 
+    /**
+     * Enables terrain rendering from a raster feature collection.
+     *
+     * The collection is converted to a local-space heightfield and used to
+     * replace the flat render path with the terrain render path.
+     *
+     * @param collection Raster feature collection containing bbox, resolution, and height values.
+     * @param property Dot-path to the raster band used as terrain height.
+     * @returns Nothing. Terrain resources are initialized immediately.
+     * @throws {Error} If the map origin is not initialized or the heightfield input is invalid.
+     * @example
+     * map.enableTerrainMode(elevationCollection, 'bands.elevation');
+     */
     enableTerrainMode(collection: FeatureCollection<Geometry | null>, property: string): void {
         if (!this.layerManager.hasOrigin) {
             throw new Error('Terrain mode requires at least one map layer to initialize the map origin first.');
         }
 
-        this._terrainSource = terrainSourceFromRaster(collection, property, this.layerManager.origin);
-        this.fitCameraToTerrainBounds(this._terrainSource.bounds);
-        const overlaySize = this.getTerrainOverlayTextureSize();
-        this._renderer.configureOverlayTexture(
-            overlaySize,
-            overlaySize,
-        );
-        this.rebuildTerrainRenderer();
-    }
-
-    private getTerrainOverlayTextureSize(): number {
-        return Math.min(TERRAIN_OVERLAY_TEXTURE_SIZE, this._renderer.device.limits.maxTextureDimension2D);
-    }
-
-    private rebuildTerrainRenderer(): void {
-        if (!this._terrainSource) {
-            return;
-        }
-
-        this._terrainRenderer?.destroy();
-        this._terrainRenderer = new TerrainRenderer(
-            this._renderer.device,
-            this._renderer.canvasFormat,
-            'depth32float',
-            this._renderer.sampleCount,
-            this._terrainSource,
-            this._renderer.overlayTextureView,
-            this._renderer.overlayPickingTextureView,
+        const heightfield = heightfieldFromRaster(collection, property, this.layerManager.origin);
+        this._terrainRenderPath?.destroy();
+        this._terrainRenderPath = new TerrainMapRenderPath(
+            this._renderer,
+            this._camera,
+            this._layerManager,
+            this._picking,
+            heightfield,
         );
     }
 
-    private fitCameraToTerrainBounds(bounds: readonly [number, number, number, number]): void {
-        const width = Math.max(bounds[2] - bounds[0], 1);
-        const height = Math.max(bounds[3] - bounds[1], 1);
-        const centerX = (bounds[0] + bounds[2]) * 0.5;
-        const centerY = (bounds[1] + bounds[3]) * 0.5;
-        const aspect = Math.max(this._renderer.pixelWidth / Math.max(this._renderer.pixelHeight, 1), 1e-6);
-        const halfFovTangent = Math.tan(this._camera.getFovyRadians() * 0.5);
-        const distanceForHeight = height / (2 * halfFovTangent);
-        const distanceForWidth = width / (2 * halfFovTangent * aspect);
-        const distance = Math.max(distanceForHeight, distanceForWidth) * 1.08;
-
-        this._camera.resetCamera([0, 1, 0], [centerX, centerY, 0], [centerX, centerY, distance]);
-        this._camera.resize(this._renderer.pixelWidth, this._renderer.pixelHeight);
-    }
-
+    /**
+     * Disables terrain rendering and returns the map to the flat render path.
+     *
+     * @returns Nothing. Terrain GPU resources are released when present.
+     * @throws Never throws.
+     * @example
+     * map.disableTerrainMode();
+     */
     disableTerrainMode(): void {
-        this._layerManager.layers.forEach((layer) => {
-            if (layer instanceof Triangles3DLayer) {
-                layer.clearTerrainHeightSource();
-            }
-        });
-        this._terrainRenderer?.destroy();
-        this._terrainRenderer = null;
-        this._terrainSource = null;
+        this._terrainRenderPath?.destroy();
+        this._terrainRenderPath = null;
     }
 
-    updateTerrainDebug(options: Partial<typeof this._terrainDebug>): void {
-        this._terrainDebug = { ...this._terrainDebug, ...options };
+    /**
+     * Updates debug options for the active terrain render path.
+     *
+     * Calls before terrain mode is enabled are ignored.
+     *
+     * @param options Partial terrain debug flags to merge with existing options.
+     * @returns Nothing.
+     * @throws Never throws.
+     * @example
+     * map.updateTerrainDebug({ showMesh: true, enableCulling: false });
+     */
+    updateTerrainDebug(options: Partial<TerrainDebugOptions>): void {
+        this._terrainRenderPath?.updateDebug(options);
     }
 
+    /**
+     * Resets the camera for the active render mode.
+     *
+     * In terrain mode the camera frames the heightfield bounds; otherwise it
+     * returns to the default flat map view.
+     *
+     * @returns Nothing. The camera state and viewport matrices are updated.
+     * @throws Never throws.
+     * @example
+     * map.resetCamera();
+     */
     resetCamera(): void {
-        if (this._terrainSource) {
-            this.fitCameraToTerrainBounds(this._terrainSource.bounds);
-            return;
-        }
-
-        this._camera.resetCamera([0, 1, 0], [0, 0, 0], [0, 0, 10000]);
-        this._camera.resize(this._renderer.pixelWidth, this._renderer.pixelHeight);
+        (this._terrainRenderPath ?? this._flatRenderPath).resetCamera();
     }
 
+    /**
+     * Toggles terrain overlay bounds debug rendering.
+     *
+     * The call is ignored with a warning when terrain mode is disabled.
+     *
+     * @returns Nothing.
+     * @throws Never throws.
+     * @example
+     * map.toggleTerrainOverlayBoundsDebug();
+     */
     toggleTerrainOverlayBoundsDebug(): void {
-        if (this._frozenTerrainOverlayBounds) {
-            this._frozenTerrainOverlayBounds = null;
-            this._frozenTerrainCameraPosition = null;
-            console.log('Terrain overlay bounds debug: cleared');
-            return;
-        }
-
-        if (!this._terrainRenderer) {
+        if (!this._terrainRenderPath) {
             console.warn('Terrain overlay bounds debug requires terrain mode.');
             return;
         }
 
-        this._frozenTerrainOverlayBounds = this.computeTerrainVisibleBounds(this._terrainRenderer.bounds);
-        const [x, y] = this._camera.getEye();
-        this._frozenTerrainCameraPosition = [x, y];
-        console.log('Terrain overlay bounds debug:', this._frozenTerrainOverlayBounds, 'camera:', this._frozenTerrainCameraPosition);
+        this._terrainRenderPath.toggleOverlayBoundsDebug();
     }
 
     /**
@@ -906,6 +885,8 @@ export class AutkMap {
         this._keyEvents.destroyEvents();
         this._mouseEvents.destroyEvents();
         this._resizeEvents.destroyEvents();
+        this._terrainRenderPath?.destroy();
+        this._terrainRenderPath = null;
 
         this._layerManager.layers.forEach((layer) => {
             layer.destroy();
@@ -913,7 +894,6 @@ export class AutkMap {
 
         this._ui.destroy();
         this._renderer.destroy();
-        this._terrainRenderer?.destroy();
 
         this._isDestroyed = true;
     }
@@ -982,378 +962,19 @@ export class AutkMap {
         }
     }
 
+    /**
+     * Executes one render frame, including normal and picking passes.
+     * 
+     * @returns Nothing. Rendering commands are recorded and submitted to the GPU.
+     */
     private _renderFrame() {
         this._camera.update();
-        if (this._terrainRenderer) {
-            this._renderTerrainFrame();
+        if (this._terrainRenderPath) {
+            this._terrainRenderPath.renderFrame();
             return;
         }
 
-        const pendingPick = this.consumePendingPick();
-
-        // Normal render pass
-        this._renderer.start();
-        const visible3DLayers = this._layerManager.layers.filter(
-            (layer): layer is Triangles3DLayer => !layer.layerRenderInfo.isSkip && layer instanceof Triangles3DLayer
-        );
-        this._layerManager.layers.forEach((layer) => {
-            if (!layer.layerRenderInfo.isSkip) {
-                layer.prepareRender(this._camera);
-            }
-        });
-        if (visible3DLayers.length > 0) {
-            const geometryPassEncoder = PipelineBuildingSSAO.beginSharedGeometryPass(this._renderer);
-            visible3DLayers.forEach((layer) => {
-                layer.renderSceneGeometry(this._camera, geometryPassEncoder);
-            });
-            geometryPassEncoder.end();
-        }
-        const mainPassEncoder = this._renderer.beginMainRenderPass();
-        this._layerManager.layers.forEach((layer) => {
-            if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
-                layer.renderPass(this._camera, mainPassEncoder);
-            }
-        });
-        if (visible3DLayers.length > 0) {
-            PipelineBuildingSSAO.compositeSharedPass(this._renderer, mainPassEncoder);
-        }
-        mainPassEncoder.end();
-
-        let pickReadbackSlot: number | null = null;
-        if (pendingPick) {
-            this._renderer.startPickingRenderPass();
-            pendingPick.layer.renderPickingPass(this._camera);
-            pickReadbackSlot = this.enqueuePickingReadback(pendingPick);
-        }
-
-        this._renderer.finish();
-        this.resolvePickingReadback(pendingPick, pickReadbackSlot);
-    }
-
-    private _renderTerrainFrame(): void {
-        const terrain = this._terrainRenderer;
-        if (!terrain) {
-            return;
-        }
-
-        this._renderer.start();
-        const overlaySize = this.getTerrainOverlayTextureSize();
-        const overlayResized = this._renderer.configureOverlayTexture(
-            overlaySize,
-            overlaySize,
-        );
-        if (overlayResized) {
-            this.rebuildTerrainRenderer();
-        }
-        const activeTerrain = this._terrainRenderer;
-        if (!activeTerrain) {
-            return;
-        }
-        const pendingPick = this.consumePendingPick();
-        const fallbackBounds = this.computeTerrainVisibleBounds(activeTerrain.bounds);
-        const waterColor = this.getTerrainWaterColor();
-        activeTerrain.update(this._camera, fallbackBounds, [0, 0, 1, 1], waterColor, this._terrainDebug);
-        const reducedBounds = activeTerrain.visibleBounds;
-        const overlayBounds = reducedBounds && this.isUsableTerrainOverlayBounds(reducedBounds, fallbackBounds, activeTerrain.bounds)
-            ? reducedBounds
-            : fallbackBounds;
-        const overlayPixelRect = this.computeTerrainOverlayPixelRect(overlayBounds);
-        const overlayUvRect: [number, number, number, number] = [
-            overlayPixelRect.x / this._renderer.overlayWidth,
-            overlayPixelRect.y / this._renderer.overlayHeight,
-            overlayPixelRect.width / this._renderer.overlayWidth,
-            overlayPixelRect.height / this._renderer.overlayHeight,
-        ];
-        // this.logTerrainOverlayBounds({
-        //     fallbackBounds,
-        //     reducedBounds,
-        //     overlayBounds,
-        //     overlayPixelRect,
-        //     overlayUvRect,
-        //     usingReduced: overlayBounds === reducedBounds,
-        // });
-        try {
-            activeTerrain.encodeVisibleBoundsReduction(this._renderer.commandEncoder);
-        } catch (error) {
-            console.warn('Terrain visible bounds prepass failed; using fallback bounds:', error);
-        }
-        this._terrainOverlayCamera.setOrthographicBounds(
-            overlayBounds[0],
-            overlayBounds[2],
-            overlayBounds[1],
-            overlayBounds[3],
-        );
-
-        this._layerManager.layers.forEach((layer) => {
-            if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
-                layer.prepareRender(this._terrainOverlayCamera);
-            }
-        });
-        const overlayPass = this._renderer.beginOverlayRenderPass();
-        overlayPass.setViewport(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height, 0, 1);
-        overlayPass.setScissorRect(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height);
-        this._layerManager.layers.forEach((layer) => {
-            if (!layer.layerRenderInfo.isSkip && !(layer instanceof Triangles3DLayer)) {
-                layer.renderPass(this._terrainOverlayCamera, overlayPass);
-            }
-        });
-        overlayPass.end();
-
-        activeTerrain.update(this._camera, overlayBounds, overlayUvRect, waterColor, this._terrainDebug);
-        const terrainPass = this._renderer.beginMainRenderPass();
-        activeTerrain.render(terrainPass, this._terrainDebug.showMesh);
-        if (this._frozenTerrainOverlayBounds) {
-            activeTerrain.renderOverlayBounds(
-                terrainPass,
-                this._frozenTerrainOverlayBounds,
-                this._frozenTerrainCameraPosition ?? undefined,
-            );
-        }
-        terrainPass.end();
-        this._renderer.configureTerrainDepthTexture(
-            2 * this._renderer.pixelWidth,
-            2 * this._renderer.pixelHeight,
-        );
-        const terrainDepthPass = this._renderer.beginTerrainDepthRenderPass();
-        activeTerrain.renderDepth(terrainDepthPass);
-        terrainDepthPass.end();
-
-        const visible3DLayers = this._layerManager.layers.filter(
-            (layer): layer is Triangles3DLayer => !layer.layerRenderInfo.isSkip && layer instanceof Triangles3DLayer
-        );
-        if (visible3DLayers.length > 0) {
-            const terrainSource = activeTerrain.terrainSource;
-            const terrainHeightView = activeTerrain.terrainHeightTextureView;
-            const geometryPassEncoder = PipelineBuildingSSAO.beginSharedGeometryPass(this._renderer);
-            visible3DLayers.forEach((layer) => {
-                layer.setTerrainHeightSource(terrainSource, terrainHeightView);
-                layer.renderSceneGeometry(this._camera, geometryPassEncoder);
-            });
-            geometryPassEncoder.end();
-
-            const buildingCompositePass = this._renderer.beginMainColorRenderPass('load');
-            PipelineBuildingSSAO.compositeSharedPassWithTerrainDepth(
-                this._renderer,
-                buildingCompositePass,
-                this._renderer.terrainDepthTextureView,
-            );
-            buildingCompositePass.end();
-        }
-        const pickReadbackSlot = this.renderTerrainPickingPass(pendingPick, activeTerrain, overlayPixelRect);
-        this._renderer.finish();
-        this.resolvePickingReadback(pendingPick, pickReadbackSlot);
-        activeTerrain.resolveVisibleBoundsReadback();
-    }
-
-    private consumePendingPick(): PendingPick | null {
-        const activePickingLayer = this.activePickingLayer;
-        if (!activePickingLayer || activePickingLayer.layerRenderInfo.isSkip || !activePickingLayer.layerRenderInfo.pickedComps) {
-            return null;
-        }
-
-        const [x, y] = activePickingLayer.layerRenderInfo.pickedComps;
-        activePickingLayer.layerRenderInfo.pickedComps = undefined;
-
-        if (!(activePickingLayer instanceof VectorLayer) && !(activePickingLayer instanceof SpriteLayer)) {
-            activePickingLayer.clearHighlightedIds();
-            return null;
-        }
-
-        return { layer: activePickingLayer, pickableLayer: activePickingLayer, x, y };
-    }
-
-    private enqueuePickingReadback(pendingPick: PendingPick): number | null {
-        const pickReadbackSlot = this._renderer.reservePickingReadbackSlot(1);
-        if (pickReadbackSlot === null) {
-            console.warn('Picking readback buffers are still busy; skipping this picking frame.');
-            return null;
-        }
-
-        this._renderer.enqueuePickingReadback(pickReadbackSlot, 0, pendingPick.x, pendingPick.y);
-        return pickReadbackSlot;
-    }
-
-    private resolvePickingReadback(pendingPick: PendingPick | null, pickReadbackSlot: number | null): void {
-        if (pickReadbackSlot === null || !pendingPick) {
-            return;
-        }
-
-        this._renderer.readPickingResults(pickReadbackSlot, 1).then((ids) => {
-            const id = ids[0] ?? -1;
-            const { layer, pickableLayer } = pendingPick;
-
-            if (id >= 0) {
-                pickableLayer.toggleHighlightedIds([id]);
-                this._mapEvents.emit(MapEvent.PICKING, { selection: pickableLayer.highlightedIds, layerId: layer.layerInfo.id });
-            } else {
-                layer.clearHighlightedIds();
-                this._mapEvents.emit(MapEvent.PICKING, { selection: [], layerId: layer.layerInfo.id });
-            }
-        });
-    }
-
-    private renderTerrainPickingPass(
-        pendingPick: PendingPick | null,
-        activeTerrain: TerrainRenderer,
-        overlayPixelRect: { x: number; y: number; width: number; height: number },
-    ): number | null {
-        if (!pendingPick) {
-            return null;
-        }
-
-        if (pendingPick.layer instanceof Triangles3DLayer) {
-            const terrainDepthPass = this._renderer.beginPickingDepthRenderPass();
-            activeTerrain.renderDepth(terrainDepthPass);
-            terrainDepthPass.end();
-
-            const buildingPickingPass = this._renderer.beginPickingRenderPass('load');
-            pendingPick.layer.setTerrainHeightSource(activeTerrain.terrainSource, activeTerrain.terrainHeightTextureView);
-            pendingPick.layer.renderPickingPass(this._camera, buildingPickingPass);
-            buildingPickingPass.end();
-            return this.enqueuePickingReadback(pendingPick);
-        }
-
-        const overlayPickingPass = this._renderer.beginOverlayPickingRenderPass();
-        overlayPickingPass.setViewport(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height, 0, 1);
-        overlayPickingPass.setScissorRect(overlayPixelRect.x, overlayPixelRect.y, overlayPixelRect.width, overlayPixelRect.height);
-        pendingPick.layer.renderPickingPass(this._terrainOverlayCamera, overlayPickingPass);
-        overlayPickingPass.end();
-
-        const terrainPickingPass = this._renderer.beginPickingRenderPass();
-        activeTerrain.renderPicking(terrainPickingPass);
-        terrainPickingPass.end();
-        return this.enqueuePickingReadback(pendingPick);
-    }
-
-    // private logTerrainOverlayBounds(params: {
-    //     fallbackBounds: readonly [number, number, number, number];
-    //     reducedBounds: readonly [number, number, number, number] | null;
-    //     overlayBounds: readonly [number, number, number, number];
-    //     overlayPixelRect: { x: number; y: number; width: number; height: number };
-    //     overlayUvRect: readonly [number, number, number, number];
-    //     usingReduced: boolean;
-    // }): void {
-    //     const now = performance.now();
-    //     if (now - this._lastTerrainBoundsLogTime < 1000) {
-    //         return;
-    //     }
-
-    //     this._lastTerrainBoundsLogTime = now;
-    //     console.log('Terrain overlay bounds', {
-    //         theoreticalBounds: Array.from(params.fallbackBounds),
-    //         fallbackBounds: Array.from(params.fallbackBounds),
-    //         reducedBounds: params.reducedBounds ? Array.from(params.reducedBounds) : null,
-    //         overlayBounds: Array.from(params.overlayBounds),
-    //         overlayPixelRect: params.overlayPixelRect,
-    //         overlayUvRect: Array.from(params.overlayUvRect),
-    //         usingReduced: params.usingReduced,
-    //         boundsSource: params.usingReduced ? 'gpu-reduced' : 'theoretical-fallback',
-    //         cameraEye: this._camera.getEye(),
-    //         cameraLookAt: this._camera.getLookAt(),
-    //     });
-    // }
-
-    private getTerrainWaterColor(): [number, number, number] {
-        const color = MapStyle.getColor('water');
-        return [color.r / 255, color.g / 255, color.b / 255];
-    }
-
-    private computeTerrainVisibleBounds(terrainBounds: readonly [number, number, number, number]): [number, number, number, number] {
-        const points: Array<[number, number]> = [];
-        const eye = this._camera.getEye();
-        const terrainDiagonal = Math.hypot(terrainBounds[2] - terrainBounds[0], terrainBounds[3] - terrainBounds[1]);
-        const maxRayDistance = Math.min(
-            this._camera.getFar(),
-            Math.max(Math.abs(eye[2]) * 8, terrainDiagonal * 0.05, 1),
-        );
-        const corners: Array<[number, number]> = [
-            [0, 0],
-            [1, 0],
-            [1, 1],
-            [0, 1],
-        ];
-
-        for (const [x, y] of corners) {
-            const direction = this._camera.getWorldRayDirection(x, y);
-            const groundDistance = Math.abs(direction[2]) > 1e-6
-                ? -eye[2] / direction[2]
-                : Number.POSITIVE_INFINITY;
-            const distance = groundDistance > 0
-                ? Math.min(groundDistance, maxRayDistance)
-                : maxRayDistance;
-
-            points.push([eye[0] + direction[0] * distance, eye[1] + direction[1] * distance]);
-        }
-
-        if (points.length === 0) {
-            const lookAt = this._camera.getLookAt();
-            points.push([lookAt[0], lookAt[1]]);
-        }
-
-        const rawMinX = Math.min(...points.map((point) => point[0]));
-        const rawMaxX = Math.max(...points.map((point) => point[0]));
-        const rawMinY = Math.min(...points.map((point) => point[1]));
-        const rawMaxY = Math.max(...points.map((point) => point[1]));
-
-        return [
-            rawMinX,
-            rawMinY,
-            rawMaxX,
-            rawMaxY,
-        ];
-    }
-
-    private computeTerrainOverlayPixelRect(bounds: readonly [number, number, number, number]): { x: number; y: number; width: number; height: number } {
-        const textureWidth = Math.max(1, this._renderer.overlayWidth);
-        const textureHeight = Math.max(1, this._renderer.overlayHeight);
-        const boundsWidth = Math.max(bounds[2] - bounds[0], 1);
-        const boundsHeight = Math.max(bounds[3] - bounds[1], 1);
-        const boundsAspect = boundsWidth / boundsHeight;
-        const textureAspect = textureWidth / textureHeight;
-        let width: number;
-        let height: number;
-
-        if (boundsAspect >= textureAspect) {
-            width = textureWidth;
-            height = Math.max(1, Math.floor(textureWidth / boundsAspect));
-        } else {
-            height = textureHeight;
-            width = Math.max(1, Math.floor(textureHeight * boundsAspect));
-        }
-
-        return {
-            x: Math.floor((textureWidth - width) * 0.5),
-            y: Math.floor((textureHeight - height) * 0.5),
-            width,
-            height,
-        };
-    }
-
-    private isUsableTerrainOverlayBounds(
-        bounds: readonly [number, number, number, number],
-        fallbackBounds: readonly [number, number, number, number],
-        terrainBounds: readonly [number, number, number, number],
-    ): boolean {
-        if (!bounds.every(Number.isFinite)) {
-            return false;
-        }
-
-        const width = bounds[2] - bounds[0];
-        const height = bounds[3] - bounds[1];
-        if (width <= 1 || height <= 1) {
-            return false;
-        }
-
-        const terrainOverlap = bounds[0] < terrainBounds[2]
-            && bounds[2] > terrainBounds[0]
-            && bounds[1] < terrainBounds[3]
-            && bounds[3] > terrainBounds[1];
-        const fallbackOverlap = bounds[0] < fallbackBounds[2]
-            && bounds[2] > fallbackBounds[0]
-            && bounds[1] < fallbackBounds[3]
-            && bounds[3] > fallbackBounds[1];
-
-        return terrainOverlap && fallbackOverlap;
+        this._flatRenderPath.renderFrame();
     }
 
     /**

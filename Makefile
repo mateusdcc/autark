@@ -66,7 +66,7 @@ dev:
 		"cd $(APP) && npm run dev$(if $(OPEN), -- --open=$(OPEN))"
 
 clean:
-	$(RIMRAF) node_modules
+	$(RIMRAF) node_modules package-lock.json
 	$(CONCURRENTLY) \
 		"cd autk-core && $(RIMRAF) dist build node_modules" \
 		"cd autk-map && $(RIMRAF) dist build node_modules" \
