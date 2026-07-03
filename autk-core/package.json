@@ -1,6 +1,6 @@
 {
   "name": "@urban-toolkit/autk-core",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Shared runtime utilities for the Autark toolkit",
   "repository": {
     "type": "git",
@@ -9,7 +9,8 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "main": "./dist/autk-core.umd.cjs",
   "module": "./dist/autk-core.js",
@@ -18,7 +19,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/autk-core.js",
-      "require": "./dist/autk-core.umd.cjs"
+      "require": "./dist/autk-core.umd.cjs",
+      "default": "./dist/autk-core.js"
     }
   },
   "scripts": {

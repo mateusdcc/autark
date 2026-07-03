@@ -1,6 +1,6 @@
 {
   "name": "@urban-toolkit/autk-compute",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "keywords": [
     "urban",
     "data management",
@@ -13,7 +13,8 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "main": "./dist/autk-compute.umd.cjs",
   "module": "./dist/autk-compute.js",
@@ -22,7 +23,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/autk-compute.js",
-      "require": "./dist/autk-compute.umd.cjs"
+      "require": "./dist/autk-compute.umd.cjs",
+      "default": "./dist/autk-compute.js"
     }
   },
   "scripts": {
@@ -34,7 +36,7 @@
     "doc": "typedoc --options typedoc.json"
   },
   "dependencies": {
-    "@urban-toolkit/autk-core": "3.0.0"
+    "@urban-toolkit/autk-core": "3.0.1"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.16",

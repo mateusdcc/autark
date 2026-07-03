@@ -18,7 +18,7 @@ export default defineConfig({
       name: 'autk-map',
     },
     copyPublicDir: false,
-    emptyOutDir: false,
+    emptyOutDir: true,
     sourcemap: true
   },
 });

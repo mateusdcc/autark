@@ -39,6 +39,9 @@ jobs:
       - name: Build packages
         run: make build
 
+      - name: Validate package artifacts
+        run: npm run validate:packages
+
       - name: Publish new package versions
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -13,8 +13,6 @@ module.exports = [
             '**/*.d.ts',
             '._*',
             '**/._*',
-            'tests/report/**',
-            'tests/results/**',
         ],
     },
     js.configs.recommended,

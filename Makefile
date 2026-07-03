@@ -1,11 +1,9 @@
-.PHONY: lint typecheck build docs verify test test-update dev clean
+.PHONY: lint typecheck build package-validate docs verify dev clean
 
 CONCURRENTLY := npx concurrently
 RIMRAF := npx rimraf
 
 APP ?= gallery
-TEST ?= tests/gallery/autk-map/colormap-categorical.test.ts
-UPDATE ?= cache images
 
 lint:
 	npm run lint
@@ -30,6 +28,9 @@ build:
 		"cd autk-compute && npm run build"
 	cd autk && npm run build
 
+package-validate: build
+	npm run validate:packages
+
 docs:
 	$(CONCURRENTLY) \
 		"cd autk-core && npm run doc" \
@@ -39,19 +40,6 @@ docs:
 		"cd autk-compute && npm run doc"
 
 verify: lint typecheck
-
-test:
-	APP=$(APP) npx playwright test $(TEST)
-
-# Update committed test baselines locally.
-# Examples:
-#   make test-update TEST=tests/gallery/autk-map/colormap-categorical.test.ts UPDATE=images
-#   make test-update TEST=tests/gallery/autk-map/osm-layers-api.test.ts UPDATE="cache images"
-test-update:
-	APP=$(APP) \
-	$(if $(findstring cache,$(UPDATE)),HAR_UPDATE=1) \
-	npx playwright test $(TEST) \
-	$(if $(findstring images,$(UPDATE)),--update-snapshots)
 
 dev:
 	npm install

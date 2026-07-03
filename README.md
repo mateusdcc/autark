@@ -87,36 +87,6 @@ make dev APP=gallery OPEN=/src/autk-plot/map-d3-table.html
 make dev APP=usecases OPEN=/src/urbane/main.html
 ```
 
-### Testing
-
-Autark uses [Playwright](https://playwright.dev/) for end-to-end visual regression testing. Tests are organized under `tests/<app>/` and compare screenshots against committed reference images.
-
-To run the stable test suite:
-
-```bash
-make test
-```
-
-To run a specific test:
-
-```bash
-make test TEST=tests/gallery/autk-map/standalone-geojson-vis.test.ts
-```
-
-To update the visual baselines:
-
-```bash
-# Update screenshots only
-make test-update TEST=tests/gallery/autk-map/colormap-categorical.test.ts UPDATE="images"
-```
-
-Tests that load OpenStreetMap data use HAR files under `tests/data/` to replay Overpass API responses without hitting the network. Include `cache` in `UPDATE` to re-record them when the query or area changes.
-
-```bash
-# Update HAR cache and screenshots
-make test-update TEST=tests/gallery/autk-map/osm-layers-api.test.ts UPDATE="cache images"
-```
-
 ### Development Workflow
 
 The `Makefile` provides several commands to help with the development process:
@@ -127,9 +97,8 @@ The `Makefile` provides several commands to help with the development process:
 | `make typecheck` | Builds package outputs, then typechecks all workspaces. |
 | `make build` | Builds the publishable packages and the `autk` umbrella package. |
 | `make verify` | Runs lint and typecheck (including the build required for type resolution). |
+| `make package-validate` | Builds packages and validates the publishable npm artifacts. |
 | `make docs` | Generates TypeDoc documentation for the core libraries. |
-| `make test` | Runs the stable Playwright tests used by CI. |
-| `make test-update` | Updates local Playwright screenshots and/or HAR files for a selected test. |
 | `make clean` | Removes `node_modules` and build artifacts. |
 
 ## Notes

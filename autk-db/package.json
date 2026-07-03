@@ -1,6 +1,6 @@
 {
   "name": "@urban-toolkit/autk-db",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "keywords": [
     "urban",
     "data management"
@@ -12,20 +12,24 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "module": "./dist/autk-db.js",
+  "module": "./dist/browser.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/autk-db.js"
+      "browser": "./dist/browser.js",
+      "node": "./dist/node.js",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
     }
   },
   "scripts": {
     "dev": "vite",
     "dev-build": "tsc && vite build --watch",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && AUTK_DB_TARGET=node vite build",
     "preview": "vite preview",
     "format": "prettier --write .",
     "doc": "typedoc --options typedoc.json"
@@ -51,7 +55,7 @@
     "@osmix/pbf": "^0.0.9",
     "@osmix/shared": "^0.0.13",
     "@turf/turf": "^7.3.5",
-    "@urban-toolkit/autk-core": "3.0.0",
+    "@urban-toolkit/autk-core": "3.0.1",
     "apache-arrow": "^21.1.0",
     "geotiff": "^3.0.5",
     "rbush": "^4.0.1"

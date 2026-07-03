@@ -1,6 +1,6 @@
 {
   "name": "@urban-toolkit/autk-map",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "keywords": [
     "visualization",
     "urban",
@@ -13,7 +13,8 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "main": "./dist/autk-map.umd.cjs",
   "module": "./dist/autk-map.js",
@@ -22,7 +23,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/autk-map.js",
-      "require": "./dist/autk-map.umd.cjs"
+      "require": "./dist/autk-map.umd.cjs",
+      "default": "./dist/autk-map.js"
     }
   },
   "scripts": {
@@ -55,7 +57,7 @@
   },
   "dependencies": {
     "@turf/turf": "^7.3.5",
-    "@urban-toolkit/autk-core": "3.0.0",
+    "@urban-toolkit/autk-core": "3.0.1",
     "d3": "^7.9.0",
     "earcut": "^3.2.3",
     "gl-matrix": "^3.4.4",

@@ -35,18 +35,12 @@
 ### Verification & Documentation
 - `make lint`: Run linting.
 - `make typecheck`: Run type checking across all modules.
-- `make verify`: Run the full CI suite (lint, typecheck, build, docs, tests).
+- `make verify`: Run the CI verification suite (lint, typecheck, build).
+- `make package-validate`: Build packages and validate the publishable npm artifacts.
 - `make docs`: Generate TypeDoc documentation.
 
-### Testing (Playwright)
-*All test commands use `APP` and `OPEN` variables.*
-- `make test APP=<app> OPEN=<path>`: Run end-to-end visual regression tests.
-- `make test-update APP=<app> OPEN=<path>`: Update reference screenshots.
-- `make test-ui APP=<app> OPEN=<path>`: Open Playwright UI for debugging.
-- `make test-codegen APP=<app> OPEN=<path>`: Record a new test via interaction.
-
 ## Key Conventions
-- **Tech Stack**: TypeScript, WebGPU, D3.js, Playwright.
+- **Tech Stack**: TypeScript, WebGPU, D3.js.
 - **Environment**: Requires WebGPU enabled in the browser (Chrome/Edge default; Firefox Nightly requires configuration).
 - **Data Formats**: OpenStreetMap, GeoJSON, GeoTIFF.
 
