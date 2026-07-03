@@ -113,6 +113,8 @@ export class AutkMap {
 
     /** Map UI controller. */
     protected _ui!: AutkMapUi;
+    /** Whether floating UI elements should be built during initialization. */
+    protected _showUi: boolean = true;
     /** Backing WebGPU canvas. */
     protected _canvas!: HTMLCanvasElement;
     /** Active requestAnimationFrame id, if draw loop is running. */
@@ -132,10 +134,12 @@ export class AutkMap {
      * Creates an AutkMap instance bound to a canvas element.
      *
      * @param canvas Canvas element used as the WebGPU drawing surface.
+     * @param showUi Whether floating UI elements should be shown. Defaults to `true`.
      * @throws Never throws.
      */
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(canvas: HTMLCanvasElement, showUi: boolean = true) {
         this._canvas = canvas;
+        this._showUi = showUi;
         this._style = new MapStyle();
         this._renderer = new Renderer(canvas, this._style);
 
@@ -182,6 +186,11 @@ export class AutkMap {
         return this._ui;
     }
 
+    /** Whether floating UI elements are enabled for this map instance. */
+    get showUi(): boolean {
+        return this._showUi;
+    }
+
     /** Public typed map-event bus (e.g., picking). */
     get events(): EventEmitter<MapEventRecord> {
         return this._mapEvents;
@@ -215,7 +224,9 @@ export class AutkMap {
 
         this.render();
 
-        this._ui.buildUi();
+        if (this._showUi) {
+            this._ui.buildUi();
+        }
     }
 
     /**
