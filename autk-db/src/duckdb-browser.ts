@@ -3,15 +3,14 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 /**
  * Resolves the browser DuckDB-Wasm bundles for the current module location.
  *
- * When the module is served over HTTP(S) or from disk, the worker and wasm
- * assets emitted next to the bundle are used. When the module was loaded from
- * a blob:/data: URL (e.g. bundled into an anywidget ESM), relative asset URLs
- * cannot be resolved, so the official jsDelivr CDN bundles are used instead.
+ * Local app builds can load worker/wasm assets emitted next to this bundle.
+ * CDN-transformed module hosts such as esm.sh often do not expose those sidecar
+ * assets reliably, so they use the official DuckDB jsDelivr bundles instead.
  */
 function resolveBrowserBundles(): duckdb.DuckDBBundles {
   try {
     const base = import.meta.url;
-    if (base.startsWith('http:') || base.startsWith('https:') || base.startsWith('file:')) {
+    if (base.startsWith('file:')) {
       return {
         mvp: {
           mainModule: new URL(/* @vite-ignore */ './duckdb-mvp.wasm', base).href,
@@ -22,6 +21,28 @@ function resolveBrowserBundles(): duckdb.DuckDBBundles {
           mainWorker: new URL(/* @vite-ignore */ './duckdb-browser-eh.worker.js', base).href,
         },
       };
+    }
+
+    if (base.startsWith('http:') || base.startsWith('https:')) {
+      const url = new URL(base);
+      const usesLocalAssets =
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1' ||
+        url.hostname === '[::1]' ||
+        url.hostname.endsWith('.local');
+
+      if (usesLocalAssets) {
+        return {
+          mvp: {
+            mainModule: new URL(/* @vite-ignore */ './duckdb-mvp.wasm', base).href,
+            mainWorker: new URL(/* @vite-ignore */ './duckdb-browser-mvp.worker.js', base).href,
+          },
+          eh: {
+            mainModule: new URL(/* @vite-ignore */ './duckdb-eh.wasm', base).href,
+            mainWorker: new URL(/* @vite-ignore */ './duckdb-browser-eh.worker.js', base).href,
+          },
+        };
+      }
     }
   } catch {
     // Fall through to CDN bundles.
