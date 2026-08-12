@@ -1,4 +1,4 @@
-.PHONY: lint typecheck build package-validate docs verify dev clean
+.PHONY: lint typecheck build package-validate docs verify dev gallery usecases clean
 
 CONCURRENTLY := npx concurrently
 RIMRAF := npx rimraf
@@ -52,6 +52,12 @@ dev:
 		"cd autk-compute && npm run dev-build" \
 		"cd autk && npm run dev-build" \
 		"cd $(APP) && npm run dev$(if $(OPEN), -- --open=$(OPEN))"
+
+gallery:
+	$(MAKE) dev APP=gallery$(if $(OPEN), OPEN=$(OPEN))
+
+usecases:
+	$(MAKE) dev APP=usecases$(if $(OPEN), OPEN=$(OPEN))
 
 clean:
 	$(RIMRAF) node_modules package-lock.json

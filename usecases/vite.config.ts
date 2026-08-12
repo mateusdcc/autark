@@ -37,8 +37,7 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
-    // @ts-ignore
-    open: process.env.VITE_OPEN || '/src/urbane/main.html',
+    open: process.env.PLAYWRIGHT ? false : '/',
     cors: {
       origin: '*',
       allowedHeaders: 'Range, Content-Type, Authorization',

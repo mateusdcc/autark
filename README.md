@@ -77,9 +77,15 @@ After installing Node.js and GNU Make, run the following command from the projec
 make dev
 ```
 
-This command starts a development server for the default `gallery` examples folder. You can specify a different examples folder using the `APP` variable and a specific file using `OPEN`:
+This command starts a development server for the default `gallery` examples folder. You can also use dedicated shortcuts for each examples workspace, or specify the workspace with `APP` and a specific file with `OPEN`:
 
 ```bash
+# Run the gallery index
+make gallery
+
+# Run the usecases index
+make usecases
+
 # Run the gallery with a specific example
 make dev APP=gallery OPEN=/src/autk-plot/map-d3-table.html
 
