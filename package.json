@@ -5,6 +5,10 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
+    "benchmark": "npm --workspace=benchmark run benchmark",
+    "benchmark:views": "npm --workspace=benchmark run benchmark:views",
+    "benchmark:synthetic": "npm --workspace=benchmark run benchmark:synthetic",
+    "benchmark:spatialbench": "npm --workspace=benchmark run benchmark:spatialbench",
     "validate:packages": "node .github/scripts/validate-packages.mjs"
   },
   "workspaces": [
@@ -15,7 +19,8 @@
     "autk-compute",
     "autk-plot",
     "gallery",
-    "usecases"
+    "usecases",
+    "benchmark"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",
